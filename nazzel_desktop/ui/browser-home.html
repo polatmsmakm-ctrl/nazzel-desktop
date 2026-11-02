@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="ar" dir="rtl"><head><meta charset="utf-8"><title>نزّل — تصفّح وحمّل</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+:root{--bg:#0B0F10;--card:#141b1d;--line:#ffffff1f;--text:#eef4f5;--dim:#98a8ad;--accent:#2ed3b7}
+*{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--text);font:15px "Segoe UI",Tahoma,sans-serif;padding:70px 24px 40px}
+.wrap{max-width:860px;margin:0 auto} h1{margin:0 0 4px;font-size:28px} p{color:var(--dim);margin:0 0 24px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:12px;margin-bottom:28px}
+a.site{display:flex;flex-direction:column;align-items:center;gap:10px;padding:18px 8px;background:var(--card);border:1px solid var(--line);border-radius:16px;color:var(--text);text-decoration:none;font-weight:600}
+a.site:hover{border-color:var(--accent)} .ic{font-size:30px}
+h2{font-size:16px;color:var(--dim);margin:0 0 10px;display:flex;justify-content:space-between} h2 button{background:none;border:0;color:var(--accent);cursor:pointer;font:inherit}
+.hist a{display:block;padding:9px 12px;border-radius:10px;color:var(--text);text-decoration:none;direction:ltr;text-align:left;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hist{margin-bottom:22px}.hist a:hover{background:#ffffff10} .tips{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:14px 18px;color:var(--dim);line-height:1.9}
+</style></head><body><div class="wrap">
+<h1>تصفّح وحمّل</h1><p>سجّل دخولك بحساباتك مرة وحدة وتبقى محفوظة. الأزرار فوق تحمّل أو تشغّل أي صفحة تفتحها.</p>
+<div class="grid">
+<a class="site" href="https://www.youtube.com/"><span class="ic">▶️</span>يوتيوب</a>
+<a class="site" href="https://www.instagram.com/"><span class="ic">📸</span>إنستقرام</a>
+<a class="site" href="https://www.tiktok.com/"><span class="ic">🎵</span>تيك توك</a>
+<a class="site" href="https://x.com/"><span class="ic">✖️</span>إكس</a>
+<a class="site" href="https://www.facebook.com/"><span class="ic">👥</span>فيسبوك</a>
+<a class="site" href="https://www.snapchat.com/spotlight"><span class="ic">👻</span>سناب</a>
+<a class="site" href="https://www.reddit.com/"><span class="ic">💬</span>ريديت</a>
+<a class="site" href="https://www.pinterest.com/"><span class="ic">📌</span>بنترست</a>
+<a class="site" href="https://www.threads.com/"><span class="ic">🧵</span>ثريدز</a>
+<a class="site" href="https://web.stremio.com/"><span class="ic">🎬</span>ستريميو</a>
+</div>
+<h2><span>آخر ما فتحت</span><button id="clear">مسح السجل</button></h2><div class="hist" id="hist"></div>
+<div class="tips">⬇ زر «تحميل» فوق يحمّل الصفحة المفتوحة (فيديو، صوت، أو صور) ويطلّع الملفات اللي في الصفحة.<br>🛡 إعلانات يوتيوب تنتخطى، والمنشورات الممولة تنخفي، والنوافذ المنبثقة تنمنع.</div>
+</div>
+<script>
+async function draw(){const api=window.pywebview&&window.pywebview.api;if(!api){return setTimeout(draw,200)}
+const list=await api.history();const box=document.getElementById('hist');box.textContent='';
+list.slice(0,15).forEach(t=>{const a=document.createElement('a');a.textContent=t;a.href='#';a.onclick=async e=>{e.preventDefault();location.href=await api.go(t)};box.append(a)});
+document.getElementById('clear').onclick=async()=>{await api.clear_history();draw()}}
+draw();
+</script></body></html>

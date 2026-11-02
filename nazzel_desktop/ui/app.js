@@ -58,6 +58,7 @@ function show(view) {
   if (view === 'assistant') loadChat();
   if (view === 'follow') loadSubs();
   if (view === 'settings') loadSettings();
+  if (view === 'browser') loadBrowserView();
 }
 $$('nav button').forEach((b) => (b.onclick = () => show(b.dataset.view)));
 
@@ -535,8 +536,8 @@ function step(delta) {
 $('#p-next').onclick = () => step(1);
 $('#p-prev').onclick = () => step(-1);
 $('#p-skip').onclick = () => { video.currentTime += 85; $('#p-skip').hidden = true; };
-$('#p-sticker').onclick = () => { video.pause(); stickerDialog(state.current, video.currentTime); };
-$('#p-audio').onclick = () => { video.pause(); audioStudioDialog(state.current); };
+$('#p-sticker').onclick = () => { if (!state.current) return toast('هذا تشغيل مباشر، حمّله أول'); video.pause(); stickerDialog(state.current, video.currentTime); };
+$('#p-audio').onclick = () => { if (!state.current) return toast('هذا تشغيل مباشر، حمّله أول'); video.pause(); audioStudioDialog(state.current); };
 function langName(code) {
   const base = code.split(/[-_.]/)[0];
   const names = { ar: 'العربية', en: 'English', fr: 'Français', tr: 'Türkçe', es: 'Español', de: 'Deutsch', sub: 'ترجمة' };
@@ -564,9 +565,9 @@ function shiftSubs(delta) {
 $('#p-delay-minus').onclick = () => shiftSubs(-0.5);
 $('#p-delay-plus').onclick = () => shiftSubs(0.5);
 $('#p-pip').onclick = () => video.requestPictureInPicture?.().catch(() => toast('صورة داخل صورة مو متاحة'));
-$('#p-external').onclick = () => { video.pause(); api().open_external(state.current.key); };
-$('#p-frame').onclick = () => runTool('frame', state.current, { at: video.currentTime });
-$('#p-gif').onclick = () => { video.pause(); gifDialog(state.current, video.currentTime); };
+$('#p-external').onclick = () => { if (!state.current) return toast('هذا تشغيل مباشر، حمّله أول'); video.pause(); api().open_external(state.current.key); };
+$('#p-frame').onclick = () => state.current ? runTool('frame', state.current, { at: video.currentTime }) : toast('هذا تشغيل مباشر، حمّله أول');
+$('#p-gif').onclick = () => { if (!state.current) return toast('هذا تشغيل مباشر، حمّله أول'); video.pause(); gifDialog(state.current, video.currentTime); };
 function closePlayer() {
   if (state.current && video.duration) api().record(state.current.key, video.currentTime, video.duration);
   clearInterval(recordTimer);
@@ -815,11 +816,37 @@ function stickerDialog(item, start) {
 }
 
 /* ------------------------------------------------------------------ built-in browser */
+const SITES = [['▶️', 'يوتيوب', 'https://www.youtube.com/'], ['📸', 'إنستقرام', 'https://www.instagram.com/'], ['🎵', 'تيك توك', 'https://www.tiktok.com/'],
+  ['✖️', 'إكس', 'https://x.com/'], ['👥', 'فيسبوك', 'https://www.facebook.com/'], ['👻', 'سناب', 'https://www.snapchat.com/spotlight'],
+  ['💬', 'ريديت', 'https://www.reddit.com/'], ['📌', 'بنترست', 'https://www.pinterest.com/'], ['🧵', 'ثريدز', 'https://www.threads.com/'], ['🎬', 'ستريميو', 'https://web.stremio.com/']];
+$('#sites').innerHTML = SITES.map(([i, n, u]) => `<button data-u="${u}"><span class="ic">${i}</span>${n}</button>`).join('');
+$$('#sites button').forEach((b) => (b.onclick = () => api().browse(b.dataset.u)));
+async function loadBrowserView() {
+  const list = await api().browse_history();
+  $('#browse-hist').innerHTML = list.slice(0, 12).map((t) => `<div class="hist-row" data-t="${esc(t)}">${esc(t)}</div>`).join('') || '<div class="empty">ما فتحت شي للحين</div>';
+  $$('#browse-hist [data-t]').forEach((el) => (el.onclick = () => api().browse(el.dataset.t)));
+}
+$('#browse-hist-clear').onclick = async () => { await api().browse_history_clear(); loadBrowserView(); };
+function playExternal(url, title, audioOnly) {
+  $('#player').hidden = false;
+  $('#p-title').textContent = title || '';
+  $('#p-error').hidden = true;
+  $('#p-prep').hidden = true;
+  state.current = null; state.queue = [];
+  playToken += 1; clearInterval(recordTimer); clearInterval(nextTimer);
+  video.onended = video.ontimeupdate = video.onerror = video.onloadedmetadata = null;
+  $('#p-skip').hidden = true; $('#p-next-card').hidden = true;
+  $$('track', video).forEach((t) => t.remove());
+  video.hidden = false;
+  video.src = url;
+  video.play().catch(() => {});
+}
+function askAssistant(text) { show('assistant'); $('#ask').value = text; $('#send').click(); }
 const browseInput = $('#browse-url');
 browseInput.oninput = () => ($('#browse-clear').hidden = !browseInput.value);
 browseInput.onfocus = () => browseInput.select();
 $('#browse-clear').onclick = () => { browseInput.value = ''; $('#browse-clear').hidden = true; browseInput.focus(); };
-$('#browse-go').onclick = async () => { if (browseInput.value.trim()) await api().browse(browseInput.value.trim()); };
+$('#browse-go').onclick = async () => { await api().browse(browseInput.value.trim()); browseInput.value = ''; $('#browse-clear').hidden = true; loadBrowserView(); };
 browseInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') $('#browse-go').click(); });
 
 /* ------------------------------------------------------------------ voice */

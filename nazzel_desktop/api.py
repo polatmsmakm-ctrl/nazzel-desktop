@@ -64,6 +64,7 @@ ACTION_WORDS = ('نزل', 'نزّل', 'حمل', 'حمّل', 'تحميل', 'تا�
 class Api:
     def __init__(self):
         self.window = None
+        self.base_url = ''
         self.tasks = {}
         self.chat = JsonStore('assistant.json', [])
         self._clip_seen = ''
@@ -315,6 +316,14 @@ class Api:
     def browse(self, text):
         from . import browser
         return browser.open_window(self, text)
+
+    def browse_history(self):
+        from . import browser
+        return browser.BrowserApi(self).history()
+
+    def browse_history_clear(self):
+        from . import browser
+        browser.BrowserApi(self).clear_history()
 
     def voice(self, data, mime):
         """Speech (recorded in the page) → text, through Gemini."""

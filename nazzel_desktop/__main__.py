@@ -32,6 +32,7 @@ def main():
     window = webview.create_window('نزّل', url, js_api=api, width=1280, height=820, min_size=(960, 640),
                                    background_color='#0B0F10', text_select=True)
     api.window = window
+    api.base_url = url
     SUBSCRIPTIONS.start_timer(api.notify)
     icon = resource('ui', 'icon.ico')
     webview.start(debug='--debug' in sys.argv, icon=icon if os.path.exists(icon) else None,

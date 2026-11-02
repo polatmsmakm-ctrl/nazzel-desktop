@@ -12,6 +12,7 @@
     <div class="brand"><span class="logo">⬇</span><span>نزّل</span></div>
     <nav>
       <button data-view="download" class="active"><span class="i">⬇</span><span>تحميل</span><b id="badge-jobs" class="badge" hidden></b></button>
+      <button data-view="browser"><span class="i">🌐</span><span>المتصفح</span></button>
       <button data-view="library"><span class="i">▦</span><span>الملفات</span></button>
       <button data-view="assistant"><span class="i">✦</span><span>المساعد</span></button>
       <button data-view="follow"><span class="i">◉</span><span>المتابعة</span></button>
@@ -25,12 +26,6 @@
     <!-- ======================= download ======================= -->
     <section id="view-download" class="view active">
       <header><h1>تحميل</h1><p class="sub">الصق رابط من يوتيوب، تيك توك، إنستقرام، إكس، سناب، فيسبوك، أو أي موقع وأي ملف</p></header>
-      <div class="card browse">
-        <div class="row">
-          <span class="addr grow"><input id="browse-url" placeholder="🌐 افتح موقع أو ابحث… (متصفح بدون إعلانات، ومنه تنزّل بضغطة)" autocomplete="off"><button class="x" id="browse-clear" title="مسح" hidden>✕</button></span>
-          <button class="primary" id="browse-go">افتح</button>
-        </div>
-      </div>
       <div class="card paste">
         <textarea id="link" rows="2" placeholder="الصق الرابط هنا (تقدر تلصق كذا رابط، كل واحد بسطر)"></textarea>
         <div class="row wrap">
@@ -52,6 +47,21 @@
       <div class="row between"><h2>التحميلات</h2><div class="row"><button class="ghost small" id="open-folder">📂 فتح المجلد</button><button class="ghost small" id="clear-done">مسح المنتهية</button></div></div>
       <div id="jobs" class="list"></div>
       <div id="jobs-empty" class="empty">ما فيه تحميلات للحين. الصق رابط فوق ✨</div>
+    </section>
+
+    <!-- ======================= browser ======================= -->
+    <section id="view-browser" class="view">
+      <header><h1>تصفّح وحمّل</h1><p class="sub">متصفح بدون إعلانات داخل نزّل. تسجيل الدخول يبقى محفوظ، وزر «تحميل» فوق يحمّل أو يشغّل أي صفحة</p></header>
+      <div class="card browse">
+        <div class="row">
+          <span class="addr grow"><input id="browse-url" placeholder="ابحث أو اكتب رابط" autocomplete="off"><button class="x" id="browse-clear" title="مسح" hidden>✕</button></span>
+          <button class="primary" id="browse-go">افتح</button>
+        </div>
+      </div>
+      <div class="sites" id="sites"></div>
+      <div class="row between"><h2>آخر ما فتحت</h2><button class="ghost small" id="browse-hist-clear">مسح السجل</button></div>
+      <div id="browse-hist" class="list"></div>
+      <div class="card hint">⬇ زر «تحميل» داخل المتصفح: شغّل بدون إعلانات، حمّل فيديو أو صوت أو صور، ويطلّع الملفات اللي في الصفحة.<br>🛡 إعلانات يوتيوب تنتخطى، المنشورات الممولة تنخفي، والنوافذ المنبثقة تنمنع.</div>
     </section>
 
     <!-- ======================= library ======================= -->
