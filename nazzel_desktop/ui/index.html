@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>نزّل</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="app">
+  <aside id="sidebar">
+    <div class="brand"><span class="logo">⬇</span><span>نزّل</span></div>
+    <nav>
+      <button data-view="download" class="active"><span class="i">⬇</span><span>تحميل</span><b id="badge-jobs" class="badge" hidden></b></button>
+      <button data-view="library"><span class="i">▦</span><span>الملفات</span></button>
+      <button data-view="assistant"><span class="i">✦</span><span>المساعد</span></button>
+      <button data-view="follow"><span class="i">◉</span><span>المتابعة</span></button>
+      <button data-view="settings"><span class="i">⚙</span><span>الإعدادات</span></button>
+    </nav>
+    <div id="tasks"></div>
+    <div class="version" id="version"></div>
+  </aside>
+
+  <main>
+    <!-- ======================= download ======================= -->
+    <section id="view-download" class="view active">
+      <header><h1>تحميل</h1><p class="sub">الصق رابط من يوتيوب، تيك توك، إنستقرام، إكس، سناب، فيسبوك، أو أي موقع وأي ملف</p></header>
+      <div class="card paste">
+        <textarea id="link" rows="2" placeholder="الصق الرابط هنا (تقدر تلصق كذا رابط، كل واحد بسطر)"></textarea>
+        <div class="row wrap">
+          <div class="segmented" id="mode">
+            <button data-v="video" class="on">🎬 فيديو</button>
+            <button data-v="audio">🎵 صوت</button>
+            <button data-v="photos">🖼 صور</button>
+          </div>
+          <select id="quality">
+            <option value="best">أعلى جودة</option><option value="2160">4K</option><option value="1440">1440p</option>
+            <option value="1080">1080p</option><option value="720">720p</option><option value="480">480p</option>
+          </select>
+          <span class="grow"></span>
+          <button class="ghost" id="paste-btn">📋 لصق</button>
+          <button class="primary big" id="go">نزّل</button>
+        </div>
+        <div id="stremio-box" class="hint" hidden></div>
+      </div>
+      <div class="row between"><h2>التحميلات</h2><div class="row"><button class="ghost small" id="open-folder">📂 فتح المجلد</button><button class="ghost small" id="clear-done">مسح المنتهية</button></div></div>
+      <div id="jobs" class="list"></div>
+      <div id="jobs-empty" class="empty">ما فيه تحميلات للحين. الصق رابط فوق ✨</div>
+    </section>
+
+    <!-- ======================= library ======================= -->
+    <section id="view-library" class="view">
+      <header class="row between wrap">
+        <div><h1 id="lib-title">الملفات</h1><div id="crumbs" class="crumbs"></div></div>
+        <div class="row wrap">
+          <input id="search" type="search" placeholder="بحث">
+          <button class="ghost small" id="new-folder">📁 مجلد</button>
+          <button class="ghost small" id="import">⤵ استيراد</button>
+          <button class="ghost small" id="montage-btn">🎞 مونتاج</button>
+          <button class="ghost small" id="lib-open">📂</button>
+        </div>
+      </header>
+      <div class="chips" id="filters">
+        <button data-f="all" class="on">الكل</button><button data-f="video">فيديو</button><button data-f="audio">صوت</button>
+        <button data-f="image">صور</button><button data-f="file">ملفات</button>
+      </div>
+      <div id="continue-row" hidden><h2>كمّل المشاهدة</h2><div id="continue" class="hscroll"></div></div>
+      <div id="playlists-row" hidden><div class="row between"><h2>قوائم التشغيل</h2><button class="ghost small" id="new-list">+ قائمة</button></div><div id="playlists" class="hscroll"></div></div>
+      <div id="folders" class="folders"></div>
+      <div id="items" class="grid"></div>
+      <div id="lib-empty" class="empty" hidden>المجلد فاضي</div>
+    </section>
+
+    <!-- ======================= assistant ======================= -->
+    <section id="view-assistant" class="view">
+      <header class="row between"><div><h1>المساعد</h1><p class="sub">Gemini: اسأل، لخّص، ترجم، أو قل له «نزّل آخر ٥ مقاطع من القناة الفلانية صوت»</p></div><button class="ghost small" id="chat-clear">محادثة جديدة</button></header>
+      <div id="chat" class="chat"></div>
+      <div class="composer">
+        <div id="attach-chip" class="chip" hidden></div>
+        <div class="row">
+          <button class="ghost" id="attach">📎</button>
+          <textarea id="ask" rows="1" placeholder="اسأل Gemini…"></textarea>
+          <button class="primary" id="send">إرسال</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ======================= follow ======================= -->
+    <section id="view-follow" class="view">
+      <header><h1>متابعة القنوات</h1><p class="sub">أي مقطع جديد ينزل لحاله (يشيك كل نص ساعة وهو مفتوح)</p></header>
+      <div class="card">
+        <div class="row wrap">
+          <input id="sub-url" class="grow" placeholder="رابط قناة يوتيوب، حساب تيك توك أو إنستقرام، قائمة تشغيل…">
+          <select id="sub-mode"><option value="video">فيديو</option><option value="audio">صوت</option></select>
+          <select id="sub-latest"><option value="0">الجديد بس</option><option value="3">+ آخر ٣</option><option value="10">+ آخر ١٠</option></select>
+          <button class="primary" id="sub-add">تابع</button>
+        </div>
+        <div id="sub-msg" class="hint"></div>
+      </div>
+      <div class="row between"><h2>تتابع</h2><button class="ghost small" id="sub-check">شيك الحين</button></div>
+      <div id="subs" class="list"></div>
+    </section>
+
+    <!-- ======================= settings ======================= -->
+    <section id="view-settings" class="view">
+      <header><h1>الإعدادات</h1></header>
+      <div class="card form">
+        <h3>التحميل</h3>
+        <label>مجلد التحميلات <span class="row"><code id="s-folder"></code><button class="ghost small" id="s-choose">تغيير</button></span></label>
+        <label>النوع الافتراضي <select data-s="mode"><option value="video">فيديو</option><option value="audio">صوت</option><option value="photos">صور</option></select></label>
+        <label>صيغة الصوت <select data-s="audio_format"><option value="mp3">MP3</option><option value="m4a">M4A</option></select></label>
+        <label>جودة MP3 <select data-s="mp3_kbps" data-num><option value="128">128</option><option value="192">192</option><option value="256">256</option><option value="320">320</option></select></label>
+        <label>اتصالات لكل ملف <select data-s="connections" data-num><option value="1">1</option><option value="4">4</option><option value="8">8</option><option value="16">16</option></select></label>
+        <label>تحميلات بنفس الوقت <select data-s="parallel" data-num><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="5">5</option></select></label>
+        <label class="check"><input type="checkbox" data-s="subtitles"> نزّل الترجمة (عربي وإنجليزي) مع الفيديو</label>
+        <label class="check"><input type="checkbox" data-s="arabic_film_subs"> كل الترجمات العربية للأفلام والمسلسلات</label>
+        <label class="check"><input type="checkbox" data-s="watch_clipboard"> لما أنسخ رابط، اقترح تنزيله</label>
+      </div>
+      <div class="card form">
+        <h3>المساعد (Gemini)</h3>
+        <label>المفتاح <span class="row"><input id="s-key" type="password" placeholder="AIza…"><button class="ghost small" id="s-key-test">اختبر</button></span></label>
+        <div class="hint">مجاني من <a href="#" data-url="https://aistudio.google.com/apikey">aistudio.google.com/apikey</a></div>
+        <div id="s-key-msg" class="hint"></div>
+        <label>النموذج <select data-s="gemini_model"><option value="gemini-2.5-flash">Gemini 2.5 Flash (مجاني)</option><option value="gemini-2.5-flash-lite">Flash Lite (الأسرع)</option><option value="gemini-flash-latest">Flash الأحدث</option><option value="gemini-2.5-pro">2.5 Pro</option></select></label>
+        <label class="check"><input type="checkbox" data-s="gemini_search"> بحث جوجل للمعلومات الحديثة</label>
+      </div>
+      <div class="card form">
+        <h3>ستريميو</h3>
+        <label>رابط إضافة البث <span class="row"><input id="s-addon" placeholder="https://torrentio.strem.fun/…/manifest.json"><button class="ghost small" id="s-addon-test">اختبر</button></span></label>
+        <div id="s-addon-msg" class="hint">مثل Torrentio مع Real-Debrid. الرابط فيه مفتاح خدمتك، لا تشاركه.</div>
+        <label>الجودة <select data-s="stremio_quality"><option value="2160p">4K</option><option value="1080p">1080p</option><option value="720p">720p</option><option value="any">أي جودة</option></select></label>
+      </div>
+      <div class="card form">
+        <h3>شكل الترجمة في المشغّل</h3>
+        <label>الخط <select data-s="sub_font"><option value="system">عادي</option><option value="rounded">مدوّر</option><option value="bold">عريض</option><option value="serif">كلاسيكي</option><option value="arabic">عربي (Segoe UI / Tahoma)</option></select></label>
+        <label>اللون <select data-s="sub_color"><option value="white">أبيض</option><option value="yellow">أصفر</option><option value="cyan">سماوي</option><option value="lime">أخضر</option><option value="pink">وردي</option></select></label>
+        <label>الخلفية <select data-s="sub_background"><option value="box">مربع</option><option value="soft">شفاف</option><option value="outline">حدود بس</option></select></label>
+        <label>الحجم <input type="range" min="0.7" max="2" step="0.1" data-s="sub_scale" data-num></label>
+      </div>
+      <div class="card form">
+        <h3>المحرك</h3>
+        <div id="s-engine" class="hint"></div>
+        <button class="ghost" id="s-update">حدّث محرك التحميل</button>
+      </div>
+    </section>
+  </main>
+</div>
+
+<!-- player -->
+<div id="player" class="overlay" hidden>
+  <div class="player-top row between">
+    <div class="row"><button class="ghost" id="p-close">✕</button><b id="p-title"></b></div>
+    <div class="row wrap">
+      <select id="p-speed" title="السرعة"><option value="0.5">0.5×</option><option value="0.75">0.75×</option><option value="1" selected>1×</option><option value="1.25">1.25×</option><option value="1.5">1.5×</option><option value="2">2×</option><option value="3">3×</option></select>
+      <select id="p-subs" title="الترجمة"></select>
+      <button class="ghost small" id="p-delay-minus" title="الترجمة أبكر">− ترجمة</button>
+      <span id="p-delay" class="mono">0.0</span>
+      <button class="ghost small" id="p-delay-plus" title="الترجمة أبطأ">+ ترجمة</button>
+      <button class="ghost small" id="p-frame">📸 لقطة</button>
+      <button class="ghost small" id="p-gif">GIF</button>
+      <button class="ghost small" id="p-pip">⧉</button>
+      <button class="ghost small" id="p-external">↗ مشغّل ثاني</button>
+    </div>
+  </div>
+  <div class="player-stage">
+    <video id="video" controls autoplay playsinline></video>
+    <div id="p-error" class="p-error" hidden></div>
+  </div>
+</div>
+
+<!-- generic modal -->
+<div id="modal" class="overlay dim" hidden><div class="modal card"><div id="modal-body"></div></div></div>
+<div id="menu" class="menu" hidden></div>
+<div id="clip-banner" class="banner" hidden></div>
+<div id="toast" class="toast" hidden></div>
+
+<script src="app.js"></script>
+</body>
+</html>

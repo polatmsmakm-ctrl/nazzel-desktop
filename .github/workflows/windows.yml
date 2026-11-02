@@ -1,0 +1,104 @@
+name: Windows build
+
+on:
+  push:
+    branches: [windows]
+    paths-ignore: ["README.md"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: windows-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    env:
+      NAZZEL_VERSION: "1.0.${{ github.run_number }}"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Python packages
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt pyinstaller
+
+      - name: ffmpeg and deno (JavaScript for YouTube)
+        shell: pwsh
+        run: |
+          $ProgressPreference = 'SilentlyContinue'
+          New-Item -ItemType Directory -Force tools | Out-Null
+          Invoke-WebRequest https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip -OutFile ff.zip
+          Expand-Archive ff.zip -DestinationPath ff
+          Get-ChildItem ff -Recurse -Include ffmpeg.exe, ffprobe.exe | Copy-Item -Destination tools
+          Invoke-WebRequest https://github.com/denoland/deno/releases/latest/download/deno-x86_64-pc-windows-msvc.zip -OutFile deno.zip
+          Expand-Archive deno.zip -DestinationPath tools
+          Get-ChildItem tools
+
+      - name: Self-test
+        shell: pwsh
+        run: |
+          $env:PATH = "$PWD\tools;$env:PATH"
+          $server = Start-Process python -ArgumentList 'ci/serve.py', '8765', 'ci/media' -PassThru -NoNewWindow
+          Start-Sleep -Seconds 2
+          python -m nazzel_desktop.selftest
+          $code = $LASTEXITCODE
+          Stop-Process -Id $server.Id -Force
+          exit $code
+
+      - name: Build Nazzel.exe
+        run: >
+          pyinstaller --noconfirm --windowed --name Nazzel --icon nazzel_desktop/ui/icon.ico
+          --add-data "nazzel_desktop/ui;ui" --add-data "tools;tools"
+          --collect-all yt_dlp --collect-all yt_dlp_ejs --collect-all gallery_dl --collect-all webview
+          --collect-data certifi --collect-all py7zr --hidden-import nazzel_desktop.selftest
+          run.py
+
+      - name: Smoke test of the built app
+        shell: pwsh
+        run: |
+          $server = Start-Process python -ArgumentList 'ci/serve.py', '8765', 'ci/media' -PassThru -NoNewWindow
+          Start-Sleep -Seconds 2
+          $p = Start-Process dist\Nazzel\Nazzel.exe -ArgumentList '--selftest' -PassThru -Wait -NoNewWindow
+          Stop-Process -Id $server.Id -Force
+          Write-Host "exit code $($p.ExitCode)"
+          exit $p.ExitCode
+
+      - name: Installer
+        shell: pwsh
+        run: |
+          if (-not (Get-Command iscc -ErrorAction SilentlyContinue)) {
+            $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+            if (-not (Test-Path $iscc)) { choco install innosetup -y --no-progress | Out-Null }
+            $env:PATH = "${env:ProgramFiles(x86)}\Inno Setup 6;$env:PATH"
+          }
+          iscc installer.iss
+          Compress-Archive -Path dist\Nazzel\* -DestinationPath Output\Nazzel-Portable.zip
+          Get-ChildItem Output
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Nazzel-Windows
+          path: Output/*
+
+      - name: Publish (never marked as the latest release: that one is the iPhone app)
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="windows-${NAZZEL_VERSION}"
+          NOTES="نزّل للكمبيوتر (ويندوز) ${NAZZEL_VERSION}. Nazzel-Setup.exe للتثبيت، أو Nazzel-Portable.zip بدون تثبيت."
+          gh release create "$TAG" Output/Nazzel-Setup.exe Output/Nazzel-Portable.zip --target "$GITHUB_SHA" \
+            --title "نزّل للكمبيوتر ${NAZZEL_VERSION}" --notes "$NOTES" --latest=false
+          # a fixed link to the newest Windows build
+          gh release delete windows-latest --yes --cleanup-tag 2>/dev/null || true
+          gh release create windows-latest Output/Nazzel-Setup.exe Output/Nazzel-Portable.zip --target "$GITHUB_SHA" \
+            --title "نزّل للكمبيوتر (آخر نسخة)" --notes "$NOTES" --latest=false --prerelease
