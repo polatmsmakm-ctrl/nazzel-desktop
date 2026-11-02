@@ -185,13 +185,20 @@ def compress(src, target_mb, progress=None, cancel=None):
     video = max(100_000, budget / length - audio)
     height = 1080 if video > 2_500_000 else 720 if video > 1_200_000 else 540 if video > 600_000 else 360
     scale = f"scale='if(gt(ih,iw),-2,min({height * 16 // 9},iw))':'if(gt(ih,iw),min({height * 16 // 9},ih),-2)'"
-    passlog = os.path.join(tempfile.gettempdir(), 'nazzel-pass')
+    import uuid
+    passlog = os.path.join(tempfile.gettempdir(), 'nazzel-pass-' + uuid.uuid4().hex[:8])
     common = ['-i', src, '-vf', scale, '-c:v', 'libx264', '-preset', 'medium', '-b:v', str(int(video)),
               '-maxrate', str(int(video * 1.4)), '-bufsize', str(int(video * 2)), '-pix_fmt', 'yuv420p']
-    _run([*common, '-pass', '1', '-passlogfile', passlog, '-an', '-f', 'mp4', os.devnull],
+    # two passes for the picture only (the sound has no first pass)
+    _run([*common, '-pass:v', '1', '-passlogfile:v', passlog, '-an', '-f', 'mp4', os.devnull],
          (lambda p: progress(p * 0.5)) if progress else None, length, cancel)
-    _run([*common, '-pass', '2', '-passlogfile', passlog, '-c:a', 'aac', '-b:a', str(audio), '-movflags', '+faststart', out],
+    _run([*common, '-pass:v', '2', '-passlogfile:v', passlog, '-c:a', 'aac', '-b:a', str(audio), '-movflags', '+faststart', out],
          (lambda p: progress(0.5 + p * 0.5)) if progress else None, length, cancel)
+    for leftover in (passlog + '-0.log', passlog + '-0.log.mbtree'):
+        try:
+            os.remove(leftover)
+        except OSError:
+            pass
     return out
 
 
