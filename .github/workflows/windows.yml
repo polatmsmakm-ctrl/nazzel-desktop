@@ -2,7 +2,7 @@ name: Windows build
 
 on:
   push:
-    branches: [windows]
+    branches: [main]
     paths-ignore: ["README.md"]
   workflow_dispatch:
 
@@ -89,16 +89,15 @@ jobs:
           name: Nazzel-Windows
           path: Output/*
 
-      - name: Publish (never marked as the latest release: that one is the iPhone app)
+      - name: Publish
+        if: github.ref == 'refs/heads/main'
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          TAG="windows-${NAZZEL_VERSION}"
-          NOTES="نزّل للكمبيوتر (ويندوز) ${NAZZEL_VERSION}. Nazzel-Setup.exe للتثبيت، أو Nazzel-Portable.zip بدون تثبيت."
-          gh release create "$TAG" Output/Nazzel-Setup.exe Output/Nazzel-Portable.zip --target "$GITHUB_SHA" \
-            --title "نزّل للكمبيوتر ${NAZZEL_VERSION}" --notes "$NOTES" --latest=false
-          # a fixed link to the newest Windows build
-          gh release delete windows-latest --yes --cleanup-tag 2>/dev/null || true
-          gh release create windows-latest Output/Nazzel-Setup.exe Output/Nazzel-Portable.zip --target "$GITHUB_SHA" \
-            --title "نزّل للكمبيوتر (آخر نسخة)" --notes "$NOTES" --latest=false --prerelease
+          NOTES="نزّل للكمبيوتر (ويندوز) ${NAZZEL_VERSION}. Nazzel-Setup.exe للتثبيت، أو Nazzel-Portable.zip بدون تثبيت.
+
+          رابط ثابت لآخر نسخة:
+          https://github.com/${{ github.repository }}/releases/latest/download/Nazzel-Setup.exe"
+          gh release create "v${NAZZEL_VERSION}" Output/Nazzel-Setup.exe Output/Nazzel-Portable.zip --target "$GITHUB_SHA" \
+            --title "نزّل للكمبيوتر ${NAZZEL_VERSION}" --notes "$NOTES" --latest

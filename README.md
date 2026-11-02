@@ -9,7 +9,7 @@
 آخر نسخة دائماً:
 
 ```
-https://github.com/polatmsmakm-ctrl/nazzel/releases/download/windows-latest/Nazzel-Setup.exe
+https://github.com/polatmsmakm-ctrl/nazzel-desktop/releases/latest/download/Nazzel-Setup.exe
 ```
 
 أو `Nazzel-Portable.zip` تفكه وتشغّل `Nazzel.exe` بدون تثبيت.
@@ -38,6 +38,6 @@ python run.py --browser  # الواجهة في المتصفح
 python -m nazzel_desktop.selftest
 ```
 
-GitHub يبني `Nazzel-Setup.exe` تلقائياً مع كل تحديث على فرع `windows`.
+GitHub يبني `Nazzel-Setup.exe` تلقائياً مع كل تحديث على `main`.
 
 </div>
