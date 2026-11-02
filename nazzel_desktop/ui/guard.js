@@ -41,15 +41,22 @@
     if (a.target === '_blank') { e.preventDefault(); e.stopPropagation(); location.href = u.href; }   // stay in this window
   }, true);
 
-  // a page that jumps to another site by itself (no tap) right after loading is a redirect ad
+  // a page that jumps to ANOTHER site by itself (no tap, no key) is a redirect ad; normal logins/searches are untouched
   let tapped = false, loadedAt = Date.now();
-  document.addEventListener('pointerdown', () => { tapped = true; setTimeout(() => (tapped = false), 1500); }, true);
-  document.addEventListener('keydown', () => { tapped = true; setTimeout(() => (tapped = false), 1500); }, true);
-  window.addEventListener('beforeunload', (e) => {
-    if (!tapped && Date.now() - loadedAt < 4000 && document.readyState !== 'loading' && !IS_HOME) {
-      try { e.preventDefault(); e.returnValue = ''; } catch (x) {}
-    }
-  });
+  const touch = () => { tapped = true; clearTimeout(touch.t); touch.t = setTimeout(() => (tapped = false), 5000); };
+  document.addEventListener('pointerdown', touch, true);
+  document.addEventListener('keydown', touch, true);
+  document.addEventListener('paste', touch, true);
+  if (window.navigation) {
+    navigation.addEventListener('navigate', (e) => {
+      try {
+        if (!e.cancelable || e.userInitiated || e.hashChange || e.downloadRequest || tapped || window.__nzGo) return;
+        const u = new URL(e.destination.url);
+        if (!/^https?:$/.test(u.protocol) || siteOf(u.hostname) === siteOf(location.hostname)) return;
+        if (isAdHost(u.hostname) || Date.now() - loadedAt < 8000) { e.preventDefault(); blocked++; onBlocked(); }
+      } catch (x) {}
+    });
+  }
   // injected ad scripts / frames from known ad networks are removed
   new MutationObserver((list) => {
     for (const m of list) for (const n of m.addedNodes) {
@@ -135,7 +142,7 @@
   const back = h('button', { textContent: '◀', title: 'رجوع', onclick: () => history.back() });
   const fwd = h('button', { textContent: '▶', title: 'قدّام', onclick: () => history.forward() });
   const reload = h('button', { textContent: '⟳', title: 'تحديث', onclick: () => location.reload() });
-  const home = h('button', { textContent: '🏠', title: 'الرئيسية', onclick: async () => { location.href = await API().home(); } });
+  const home = h('button', { textContent: '🏠', title: 'الرئيسية', onclick: async () => { const u = await API().home(); window.__nzGo = true; location.href = u; } });
   const input = h('input', { placeholder: 'ابحث أو اكتب رابط', spellcheck: false });
   const clear = h('button', { className: 'x', textContent: '✕', title: 'مسح', onclick: () => { input.value = ''; input.focus(); } });
   const shield = h('span', { className: 'shield', title: 'إعلانات انمنعت' });
@@ -151,11 +158,17 @@
     const text = input.value.trim();
     if (!text) return;
     const url = await API().go(text);
+    window.__nzGo = true;
     if (url) location.href = url;
   };
   input.addEventListener('keydown', (e) => { if (e.key === 'Enter') go(); if (e.key === 'Escape') { input.value = IS_HOME ? '' : location.href; input.blur(); } e.stopPropagation(); });
   input.addEventListener('keyup', (e) => e.stopPropagation());
   input.addEventListener('focus', () => input.select());
+  document.addEventListener('keydown', (e) => {          // browser shortcuts
+    if ((e.ctrlKey && e.key.toLowerCase() === 'l') || e.key === 'F6') { e.preventDefault(); input.focus(); }
+    if (e.altKey && e.key === 'ArrowLeft') history.back();
+    if (e.altKey && e.key === 'ArrowRight') history.forward();
+  }, true);
 
   const closeMenu = () => { menuEl && menuEl.remove(); menuEl = null; };
   document.addEventListener('pointerdown', (e) => { if (menuEl && !e.composedPath().includes(host)) closeMenu(); }, true);
