@@ -278,10 +278,52 @@ class Api:
             'arsubs': ('ترجمات عربية', lambda p: subs.fetch_for(path, LIBRARY.meta.data.get(key, {}).get('source'))),
             'aisubs': ('ترجمة بالذكاء الاصطناعي', lambda p: LIBRARY.key(gemini.ai_subtitles(path, p))),
             'transcript': ('تفريغ نصي', lambda p: LIBRARY.key(gemini.transcript(path, p))),
+            'audio_studio': ('استوديو الصوت', lambda p: LIBRARY.key(media.audio_studio(path, options, p))),
+            'sticker': ('ملصق', lambda p: LIBRARY.key(media.sticker(path, float(options.get('start') or 0),
+                                                                  float(options.get('seconds') or 0), p))),
             'extract': ('فك الضغط', lambda p: self._extract(path, options.get('password'))),
         }
         label, work = jobs[name]
         return self._task(f'{label}: {title}', work, name, key)
+
+    # ------------------------------------------------------------ player compatibility
+
+    def needs_prepare(self, key):
+        path = LIBRARY.path(key)
+        try:
+            return bool(media.kind(path) == 'video' and media.needs_prepare(path))
+        except Exception:
+            return False
+
+    def prepare_playback(self, key):
+        """Makes a copy the built-in player can play (cached). Returns a task id; the result is the file's /file/ path."""
+        path = LIBRARY.path(key)
+
+        def work(p):
+            try:
+                media.extract_text_subs(path)
+            except Exception:
+                pass
+            return media.playable_copy(path, p).replace('\\', '/')
+        return self._task(f'تجهيز للتشغيل: {os.path.basename(path)[:40]}', work, 'prepare', key)
+
+    def task_status(self, task_id):
+        return self.tasks.get(task_id)
+
+    # ------------------------------------------------------------ browser + voice
+
+    def browse(self, text):
+        from . import browser
+        return browser.open_window(self, text)
+
+    def voice(self, data, mime):
+        """Speech (recorded in the page) → text, through Gemini."""
+        try:
+            return {'text': gemini.transcribe_audio(data, mime)}
+        except gemini.GeminiError as e:
+            return {'error': e.friendly() if e.code else e.message}
+        except Exception as e:
+            return {'error': str(e)[:200]}
 
     def _extract(self, path, password):
         result = extract(path, password)

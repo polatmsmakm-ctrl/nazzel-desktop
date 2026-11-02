@@ -271,3 +271,145 @@ def srt_to_vtt(text):
     text = text.replace('\r\n', '\n').replace('\r', '\n').lstrip('﻿')
     text = re.sub(r'(\d{2}:\d{2}:\d{2}),(\d{3})', r'\1.\2', text)
     return 'WEBVTT\n\n' + text
+
+
+# ---------------------------------------------------------------- audio studio
+
+def audio_studio(src, opts, progress=None, cancel=None):
+    """Trim, volume, speed, fade, bass/treble and loudness normalising in one pass. Writes a new file."""
+    fmt = opts.get('fmt') or 'mp3'
+    length = duration(src)
+    start = max(0.0, float(opts.get('start') or 0))
+    end = float(opts.get('end') or 0) or length
+    end = min(end, length) if length else end
+    if end and end <= start:
+        raise MediaError('نهاية المقطع قبل بدايته')
+    speed = min(2.0, max(0.5, float(opts.get('speed') or 1)))
+    out_len = ((end - start) if end else 0) / speed
+    chain = []
+    if abs(speed - 1) > 0.01:
+        chain.append(f'atempo={speed:.3f}')
+    volume = float(opts.get('volume') or 1)
+    if abs(volume - 1) > 0.01:
+        chain.append(f'volume={volume:.3f}')
+    if float(opts.get('bass') or 0):
+        chain.append(f'bass=g={float(opts["bass"]):.1f}')
+    if float(opts.get('treble') or 0):
+        chain.append(f'treble=g={float(opts["treble"]):.1f}')
+    if opts.get('normalize'):
+        chain.append('loudnorm=I=-16:TP=-1.5:LRA=11')
+    fade_in, fade_out = float(opts.get('fade_in') or 0), float(opts.get('fade_out') or 0)
+    if fade_in > 0:
+        chain.append(f'afade=t=in:st=0:d={fade_in:.2f}')
+    if fade_out > 0 and out_len:
+        chain.append(f'afade=t=out:st={max(0.0, out_len - fade_out):.2f}:d={fade_out:.2f}')
+    if opts.get('reverse'):
+        chain.append('areverse')
+    codec = ['-c:a', 'libmp3lame', '-b:a', '256k'] if fmt == 'mp3' else ['-c:a', 'aac', '-b:a', '256k']
+    base = src.rsplit('.', 1)[0]
+    out = unique(f'{base} (معدّل).{fmt}')
+    args = []
+    if start:
+        args += ['-ss', f'{start:.3f}']
+    if end and end < length - 0.05:
+        args += ['-to', f'{end:.3f}']
+    args += ['-i', src, '-vn']
+    if chain:
+        args += ['-af', ','.join(chain)]
+    _run([*args, *codec, '-map_metadata', '0', out], progress, (out_len or length) * speed if length else None, cancel)
+    return out
+
+
+# ---------------------------------------------------------------- stickers (WhatsApp style WebP)
+
+_STICKER_FIT = ('scale=512:512:force_original_aspect_ratio=decrease,'
+                'pad=512:512:(ow-iw)/2:(oh-ih)/2:color=0x00000000,format=yuva420p')
+
+
+def sticker(src, start=0.0, seconds=0.0, progress=None):
+    """512×512 WebP sticker: still (image or one video frame) or animated (a short video clip)."""
+    still = kind(src) == 'image' or seconds <= 0
+    out = unique(src.rsplit('.', 1)[0] + (' (ملصق).webp'))
+    if still:
+        pre = ['-ss', f'{start:.3f}'] if kind(src) == 'video' else []
+        _run([*pre, '-i', src, '-frames:v', '1', '-vf', _STICKER_FIT, '-c:v', 'libwebp', '-q:v', '85', out])
+        return out
+    seconds = min(seconds, 8.0)
+    for quality in (60, 45, 30, 18):          # animated stickers must stay under 1 MB
+        _run(['-ss', f'{start:.3f}', '-t', f'{seconds:.2f}', '-i', src, '-an', '-vf', f'fps=15,{_STICKER_FIT}',
+              '-c:v', 'libwebp', '-q:v', str(quality), '-loop', '0', '-compression_level', '6', '-y', out],
+             progress, seconds)
+        if os.path.getsize(out) < 1_000_000:
+            break
+    return out
+
+
+# ---------------------------------------------------------------- built-in player compatibility
+
+_PLAY_VIDEO = {'h264', 'vp8', 'vp9', 'av1'}
+_PLAY_AUDIO = {'aac', 'mp3', 'opus', 'vorbis', 'flac', 'pcm_s16le', 'pcm_s24le'}
+
+
+def needs_prepare(src):
+    """True when WebView2 probably can't play this file as it is (HEVC, AC-3/DTS sound, 10-bit, AVI…)."""
+    info = probe(src)
+    for s in info.get('streams', []):
+        codec = s.get('codec_name')
+        if s.get('codec_type') == 'video' and (s.get('disposition') or {}).get('attached_pic') != 1:
+            if codec not in _PLAY_VIDEO or (s.get('pix_fmt') or 'yuv420p') not in ('yuv420p', 'yuvj420p'):
+                return True
+        if s.get('codec_type') == 'audio' and codec not in _PLAY_AUDIO:
+            return True
+    return ext(src) not in ('mp4', 'm4v', 'mov', 'webm', 'mkv')
+
+
+def playable_copy(src, progress=None, cancel=None):
+    """A cached MP4 (H.264 + AAC) the player can always play. Picture is copied when it already is H.264."""
+    import hashlib
+    st = os.stat(src)
+    tag = hashlib.sha1(f'{src}|{st.st_size}|{int(st.st_mtime)}'.encode('utf-8')).hexdigest()[:16]
+    folder = os.path.join(cache_dir(), 'play')
+    os.makedirs(folder, exist_ok=True)
+    out = os.path.join(folder, tag + '.mp4')
+    if os.path.isfile(out) and os.path.getsize(out) > 0:
+        return out
+    info = probe(src)
+    v = next((s for s in info.get('streams', []) if s.get('codec_type') == 'video'), {})
+    a_streams = [s for s in info.get('streams', []) if s.get('codec_type') == 'audio']
+    video_ok = v.get('codec_name') == 'h264' and (v.get('pix_fmt') or 'yuv420p') in ('yuv420p', 'yuvj420p')
+    video_args = ['-c:v', 'copy'] if video_ok else ['-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23', '-pix_fmt', 'yuv420p']
+    audio_ok = bool(a_streams) and all(s.get('codec_name') in ('aac', 'mp3') for s in a_streams)
+    audio_args = ['-c:a', 'copy'] if audio_ok else ['-c:a', 'aac', '-b:a', '192k', '-ac', '2']
+    tmp = out + '.part.mp4'
+    try:
+        _run(['-i', src, '-map', '0:v:0?', '-map', '0:a:0?', *video_args, *audio_args, '-sn', '-movflags', '+faststart', tmp],
+             progress, float(info.get('format', {}).get('duration') or 0), cancel)
+        os.replace(tmp, out)
+    finally:
+        if os.path.exists(tmp):
+            try:
+                os.remove(tmp)
+            except OSError:
+                pass
+    return out
+
+
+def extract_text_subs(src):
+    """Text subtitle tracks inside a video → "<name>.<lang>.srt" next to it (skipped when already there)."""
+    info = probe(src)
+    base = src.rsplit('.', 1)[0]
+    made = []
+    for index, s in enumerate(x for x in info.get('streams', []) if x.get('codec_type') == 'subtitle'):
+        if s.get('codec_name') not in ('subrip', 'ass', 'ssa', 'mov_text', 'webvtt', 'text'):
+            continue
+        lang = (s.get('tags') or {}).get('language') or f'sub{index + 1}'
+        lang = {'ara': 'ar', 'eng': 'en', 'fre': 'fr', 'fra': 'fr', 'spa': 'es', 'tur': 'tr'}.get(lang, lang)
+        target = f'{base}.{lang}.srt'
+        if os.path.exists(target):
+            continue
+        try:
+            _run(['-i', src, '-map', f'0:s:{index}', target])
+            made.append(target)
+        except MediaError:
+            pass
+    return made

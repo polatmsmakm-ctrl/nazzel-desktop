@@ -38,6 +38,7 @@ def run():
         'audio': m.add(f'{BASE}/progressive.mp4', 'audio'),
         'file': m.add(f'{BASE}/notes.pdf'),
         'mkv': m.add(f'{BASE}/mkv/test-h264.mkv', 'video'),
+        'hevc': m.add(f'{BASE}/mkv/test-hevc.mkv', 'video'),
     }
     start = time.time()
     while time.time() - start < 240 and any(m.find(i).phase in ('queued', 'running') for i in ids.values()):
@@ -55,8 +56,23 @@ def run():
         codecs = [s.get('codec_name') for s in media.probe(mp4).get('streams', [])]
         check('mkv to mp4', abs(media.duration(mp4) - 3) < 0.4 and 'h264' in codecs and 'aac' in codecs, str(codecs))
         check('mkv subtitles', any(n.endswith('.srt') for n in os.listdir(os.path.dirname(mp4))))
+    if files.get('hevc'):
+        check('hevc needs prepare', media.needs_prepare(files['hevc']))
+        ready = media.playable_copy(files['hevc'])
+        codecs = [s.get('codec_name') for s in media.probe(ready).get('streams', [])]
+        check('hevc playable copy', 'h264' in codecs and abs(media.duration(ready) - media.duration(files['hevc'])) < 0.5, str(codecs))
+        check('playable copy cached', media.playable_copy(files['hevc']) == ready)
+        check('h264 mkv no prepare needed', not media.needs_prepare(files['mkv']) if files.get('mkv') else True)
+    if files.get('audio'):
+        studio = media.audio_studio(files['audio'], {'start': 0.5, 'end': 2.5, 'volume': 1.5, 'speed': 1.25, 'bass': 4, 'treble': 2,
+                                                     'fade_in': 0.3, 'fade_out': 0.3, 'normalize': True, 'fmt': 'm4a'})
+        check('audio studio', studio.endswith('.m4a') and abs(media.duration(studio) - 1.6) < 0.3, str(media.duration(studio)))
     if files.get('video'):
         src = files['video']
+        still = media.sticker(src, 1.0)
+        check('sticker still', still.endswith('.webp') and os.path.getsize(still) > 200)
+        moving = media.sticker(src, 0.2, 2.0)
+        check('sticker animated', moving.endswith('.webp') and os.path.getsize(moving) < 1_000_000, str(os.path.getsize(moving)))
         check('gif', os.path.getsize(media.gif(src, 0.2, 1.5)) > 1000)
         check('frame', os.path.exists(media.frame(src, 1.0)))
         packed = media.compress(src, 0.25)
@@ -65,6 +81,9 @@ def run():
         check('montage', abs(media.duration(mont) - 2 * media.duration(src)) < 0.6, str(media.duration(mont)))
         check('thumbnail', bool(media.thumbnail(src)))
 
+    from nazzel_desktop import browser
+    check('browser address', browser.normalize('youtube.com/x') == 'https://youtube.com/x'
+          and browser.normalize('قطط جميلة').startswith('https://www.google.com/search?q=') and browser.normalize('  ') == '')
     z = os.path.join(tmp, 'a.zip')
     with zipfile.ZipFile(z, 'w') as archive:
         archive.writestr('مجلد/ملف.txt', 'hi')

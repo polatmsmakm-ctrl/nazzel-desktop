@@ -5,7 +5,7 @@ import sys
 import threading
 
 APP_NAME = 'Nazzel'
-VERSION = '1.0.0'
+VERSION = '1.1.0'
 
 
 def data_dir():

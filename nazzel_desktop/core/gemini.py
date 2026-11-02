@@ -248,3 +248,14 @@ def transcript(path, progress=None):
     with open(out, 'w', encoding='utf-8') as fh:
         fh.write(body)
     return out
+
+
+def transcribe_audio(b64, mime='audio/webm'):
+    """Short spoken request (base64) → the words, in the language spoken."""
+    mime = (mime or 'audio/webm').split(';')[0]
+    answer = generate([{'role': 'user', 'parts': [
+        {'inline_data': {'mime_type': mime, 'data': b64}},
+        {'text': 'اكتب بالضبط الكلام المنطوق في المقطع كنص فقط بدون أي إضافة أو شرح. إذا ما في كلام اكتب: ...'}]}],
+        system='You are a precise speech-to-text engine. Output only the transcription.', model=None)
+    text = (answer.get('text') or '').strip()
+    return '' if text == '...' else text

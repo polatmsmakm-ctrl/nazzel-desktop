@@ -25,6 +25,12 @@
     <!-- ======================= download ======================= -->
     <section id="view-download" class="view active">
       <header><h1>تحميل</h1><p class="sub">الصق رابط من يوتيوب، تيك توك، إنستقرام، إكس، سناب، فيسبوك، أو أي موقع وأي ملف</p></header>
+      <div class="card browse">
+        <div class="row">
+          <span class="addr grow"><input id="browse-url" placeholder="🌐 افتح موقع أو ابحث… (متصفح بدون إعلانات، ومنه تنزّل بضغطة)" autocomplete="off"><button class="x" id="browse-clear" title="مسح" hidden>✕</button></span>
+          <button class="primary" id="browse-go">افتح</button>
+        </div>
+      </div>
       <div class="card paste">
         <textarea id="link" rows="2" placeholder="الصق الرابط هنا (تقدر تلصق كذا رابط، كل واحد بسطر)"></textarea>
         <div class="row wrap">
@@ -79,6 +85,7 @@
         <div id="attach-chip" class="chip" hidden></div>
         <div class="row">
           <button class="ghost" id="attach">📎</button>
+          <button class="ghost" id="mic" title="تكلّم">🎤</button>
           <textarea id="ask" rows="1" placeholder="اسأل Gemini…"></textarea>
           <button class="primary" id="send">إرسال</button>
         </div>
@@ -156,7 +163,11 @@
       <button class="ghost small" id="p-delay-minus" title="الترجمة أبكر">− ترجمة</button>
       <span id="p-delay" class="mono">0.0</span>
       <button class="ghost small" id="p-delay-plus" title="الترجمة أبطأ">+ ترجمة</button>
+      <button class="ghost small" id="p-prev" title="السابق">⏮</button>
+      <button class="ghost small" id="p-next" title="التالي">⏭</button>
       <button class="ghost small" id="p-frame">📸 لقطة</button>
+      <button class="ghost small" id="p-sticker">🏷 ملصق</button>
+      <button class="ghost small" id="p-audio">🎚 صوت</button>
       <button class="ghost small" id="p-gif">GIF</button>
       <button class="ghost small" id="p-pip">⧉</button>
       <button class="ghost small" id="p-external">↗ مشغّل ثاني</button>
@@ -165,6 +176,9 @@
   <div class="player-stage">
     <video id="video" controls autoplay playsinline></video>
     <div id="p-error" class="p-error" hidden></div>
+    <div id="p-prep" class="p-error" hidden></div>
+    <button id="p-skip" class="skip" hidden>⏩ تخطي المقدمة</button>
+    <div id="p-next-card" class="nextcard" hidden></div>
   </div>
 </div>
 

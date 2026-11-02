@@ -257,7 +257,7 @@ function bindCards(root, list) {
 }
 function openItem(item, list) {
   if (item.kind === 'video' || item.kind === 'audio') {
-    const queue = (list || []).filter((i) => i.kind === 'video' || i.kind === 'audio');
+    const queue = naturalSort((list || []).filter((i) => i.kind === item.kind));
     return play(item, queue.length ? queue : [item]);
   }
   if (item.kind === 'image' || item.ext === 'pdf') {
@@ -279,9 +279,12 @@ function itemMenu(e, item) {
   entries.push(['—']);
   if (item.kind === 'video' && item.ext !== 'mp4') entries.push(['🔄 حوّل إلى MP4', () => runTool('mp4', item)]);
   if (media && item.ext !== 'mp3') entries.push(['🎵 حوّل إلى MP3', () => runTool('mp3', item)]);
+  if (media) entries.push(['🎚 استوديو الصوت (قص، صوت، سرعة…)', () => audioStudioDialog(item)]);
+  if (item.kind === 'image') entries.push(['🏷 حوّله لملصق', () => runTool('sticker', item)]);
   if (item.kind === 'video') {
     entries.push(['🗜 ضغط (واتساب…)', () => compressDialog(item)]);
     entries.push(['🖼 صنع GIF', () => gifDialog(item, 0)]);
+    entries.push(['🏷 صنع ملصق', () => stickerDialog(item, 0)]);
     entries.push(['💬 جيب ترجمات عربية', () => runTool('arsubs', item)]);
   }
   if (media) {
@@ -325,7 +328,7 @@ async function refreshTasks() {
         const pw = await ask('كلمة سر الملف', '', '', true);
         if (pw) { await api().tool('extract', t.key, { password: pw }); toast('أفك الضغط…'); }
       }
-      if (!t.error) toast(`✓ ${t.label}`);
+      if (!t.error && t.tool !== 'prepare') toast(`✓ ${t.label}`);
       if ($('#view-library').classList.contains('active')) loadLibrary();
     }
   }
@@ -424,11 +427,48 @@ async function montageDialog() {
 
 /* ------------------------------------------------------------------ player */
 const video = $('#video');
-let subDelay = 0, recordTimer = null;
+let subDelay = 0, recordTimer = null, playToken = 0, nextTimer = null;
+const naturalSort = (list) => [...list].sort((a, b) => (a.title || '').localeCompare(b.title || '', undefined, { numeric: true }));
+async function playSource(details, token) {
+  // formats WebView2 can't play (HEVC, AC-3 sound, AVI…) are quietly converted to a cached MP4 first
+  if (details.kind === 'video' && await api().needs_prepare(details.key)) {
+    const box = $('#p-prep');
+    box.hidden = false;
+    box.innerHTML = '<div>أجهّز الفيديو للتشغيل… <b id="prep-pct">0%</b><div class="hint">يتحول مرة وحدة وبعدها يفتح علطول</div></div>';
+    const id = await api().prepare_playback(details.key);
+    for (;;) {
+      await new Promise((r) => setTimeout(r, 700));
+      if (token !== playToken) return null;
+      const t = await api().task_status(id);
+      if (!t) break;
+      $('#prep-pct').textContent = `${Math.round((t.progress || 0) * 100)}%`;
+      if (t.done) {
+        box.hidden = true;
+        if (t.error) return `/media/${enc(details.key)}`;
+        details.subtitle_tracks = (await api().item_details(details.key)).subtitle_tracks;
+        return `/file/${encodeURI(t.result)}`;
+      }
+    }
+    box.hidden = true;
+  }
+  return `/media/${enc(details.key)}`;
+}
 async function play(item, queue) {
+  const token = ++playToken;
+  clearInterval(nextTimer);
+  $('#p-next-card').hidden = true;
+  $('#p-skip').hidden = true;
   const details = await api().item_details(item.key);
+  if (token !== playToken) return;
+  if (!queue || queue.length <= 1) {      // one file: the next episodes are its folder neighbours
+    try {
+      const data = await api().library(details.folder_key || '');
+      const same = naturalSort((data.items || []).filter((i) => i.kind === details.kind));
+      queue = same.some((i) => i.key === details.key) ? same : [item];
+    } catch { queue = [item]; }
+  }
   state.current = details;
-  state.queue = queue || [item];
+  state.queue = queue;
   $('#player').hidden = false;
   $('#p-title').textContent = details.title;
   $('#p-error').hidden = true;
@@ -436,7 +476,10 @@ async function play(item, queue) {
   subDelay = 0;
   $('#p-delay').textContent = '0.0';
   $$('track', video).forEach((t) => t.remove());
-  video.src = `/media/${enc(details.key)}`;
+  video.removeAttribute('src');
+  const src = await playSource(details, token);
+  if (!src || token !== playToken) return;
+  video.src = src;
   const tracks = details.subtitle_tracks || [];
   $('#p-subs').innerHTML = `<option value="">بدون ترجمة</option>` + tracks.map((t, i) => `<option value="${i}">${esc(langName(t.lang))}</option>`).join('');
   tracks.forEach((t, i) => {
@@ -461,11 +504,39 @@ async function play(item, queue) {
   video.onended = () => {
     api().record(details.key, video.duration, video.duration);
     const i = state.queue.findIndex((q) => q.key === details.key);
-    if (i >= 0 && i + 1 < state.queue.length) play(state.queue[i + 1], state.queue);
+    if (i >= 0 && i + 1 < state.queue.length) nextCard(state.queue[i + 1]);
+  };
+  video.ontimeupdate = () => {
+    const early = video.currentTime > 3 && video.currentTime < 240 && video.duration > 600 && details.kind === 'video';
+    if ($('#p-skip').hidden === early) $('#p-skip').hidden = !early;
   };
   clearInterval(recordTimer);
   recordTimer = setInterval(() => { if (!video.paused && video.duration) api().record(details.key, video.currentTime, video.duration); }, 5000);
 }
+function nextCard(item) {
+  const card = $('#p-next-card');
+  let left = 8;
+  const draw = () => {
+    card.innerHTML = `<div class="hint">الحلقة التالية بعد ${left} ث</div><b>${esc(item.title)}</b>
+      <div class="row"><button class="primary small" id="nx-go">شغّلها الحين</button><button class="ghost small" id="nx-no">إلغاء</button></div>`;
+    $('#nx-go').onclick = () => { clearInterval(nextTimer); card.hidden = true; play(item, state.queue); };
+    $('#nx-no').onclick = () => { clearInterval(nextTimer); card.hidden = true; };
+  };
+  card.hidden = false;
+  draw();
+  clearInterval(nextTimer);
+  nextTimer = setInterval(() => { left -= 1; if (left <= 0) { clearInterval(nextTimer); card.hidden = true; play(item, state.queue); } else draw(); }, 1000);
+}
+function step(delta) {
+  const i = state.queue.findIndex((q) => q.key === state.current?.key);
+  const target = state.queue[i + delta];
+  if (i >= 0 && target) play(target, state.queue); else toast(delta > 0 ? 'هذا آخر واحد' : 'هذا أول واحد');
+}
+$('#p-next').onclick = () => step(1);
+$('#p-prev').onclick = () => step(-1);
+$('#p-skip').onclick = () => { video.currentTime += 85; $('#p-skip').hidden = true; };
+$('#p-sticker').onclick = () => { video.pause(); stickerDialog(state.current, video.currentTime); };
+$('#p-audio').onclick = () => { video.pause(); audioStudioDialog(state.current); };
 function langName(code) {
   const base = code.split(/[-_.]/)[0];
   const names = { ar: 'العربية', en: 'English', fr: 'Français', tr: 'Türkçe', es: 'Español', de: 'Deutsch', sub: 'ترجمة' };
@@ -499,6 +570,10 @@ $('#p-gif').onclick = () => { video.pause(); gifDialog(state.current, video.curr
 function closePlayer() {
   if (state.current && video.duration) api().record(state.current.key, video.currentTime, video.duration);
   clearInterval(recordTimer);
+  clearInterval(nextTimer);
+  playToken += 1;
+  $('#p-next-card').hidden = true;
+  $('#p-prep').hidden = true;
   video.pause();
   video.removeAttribute('src');
   video.load();
@@ -516,6 +591,8 @@ document.addEventListener('keydown', (e) => {
   if (e.key === 'ArrowDown') video.volume = Math.max(0, video.volume - 0.1);
   if (e.key.toLowerCase() === 'f') document.fullscreenElement ? document.exitFullscreen() : video.requestFullscreen();
   if (e.key.toLowerCase() === 'm') video.muted = !video.muted;
+  if (e.key.toLowerCase() === 'n') step(1);
+  if (e.key.toLowerCase() === 'p') step(-1);
 });
 function applySubtitleLook(s) {
   const root = document.documentElement.style;
@@ -568,6 +645,7 @@ $('#send').onclick = async () => {
   $('#typing')?.remove();
   $('#chat').insertAdjacentHTML('beforeend', renderMsg(reply));
   $('#chat').scrollTop = 1e9;
+  if (state.viaVoice) { state.viaVoice = false; if (reply.text && !reply.error) speak(reply.text); }
   if (reply.play) { const item = await api().item_details(reply.play); play(item, [item]); }
   refreshJobs();
 };
@@ -687,3 +765,98 @@ setTimeout(() => {
   window.pywebview = { api: new Proxy({}, { get: (_, name) => (...args) => fetch(`/__api/${name}`, { method: 'POST', body: JSON.stringify(args) }).then((r) => r.json()) }) };
   window.dispatchEvent(new Event('pywebviewready'));
 }, 400);
+
+
+/* ------------------------------------------------------------------ audio studio / stickers */
+function audioStudioDialog(item) {
+  const row = (id, label, min, max, step, value, unit = '') =>
+    `<label><span>${label}</span><input type="range" id="${id}" min="${min}" max="${max}" step="${step}" value="${value}"><output id="${id}-o">${value}${unit}</output></label>`;
+  modal(`<h3>🎚 استوديو الصوت</h3><div class="hint">${esc(item.title)}</div><div class="studio">
+    <label><span>من ثانية</span><input id="as-start" type="number" min="0" step="0.5" value="0"><span></span></label>
+    <label><span>إلى ثانية</span><input id="as-end" type="number" min="0" step="0.5" value="" placeholder="للنهاية"><span></span></label>
+    ${row('as-volume', 'مستوى الصوت', 20, 300, 5, 100, '%')}
+    ${row('as-speed', 'السرعة', 50, 200, 5, 100, '%')}
+    ${row('as-bass', 'الجهير', -10, 10, 1, 0, 'dB')}
+    ${row('as-treble', 'الحاد', -10, 10, 1, 0, 'dB')}
+    ${row('as-fi', 'تدرّج دخول', 0, 10, 0.5, 0, 'ث')}
+    ${row('as-fo', 'تدرّج خروج', 0, 10, 0.5, 0, 'ث')}
+    <label class="check"><input type="checkbox" id="as-norm"> وحّد مستوى الصوت (Normalize)</label>
+    <label class="check"><input type="checkbox" id="as-rev"> اعكس الصوت</label>
+    <label><span>الصيغة</span><select id="as-fmt"><option value="mp3">MP3</option><option value="m4a">M4A</option></select><span></span></label>
+    </div><div class="row" style="justify-content:flex-end;margin-top:12px"><button class="ghost" id="as-no">إلغاء</button><button class="primary" id="as-ok">طبّق</button></div>`, (el) => {
+    const units = { 'as-volume': '%', 'as-speed': '%', 'as-bass': 'dB', 'as-treble': 'dB', 'as-fi': 'ث', 'as-fo': 'ث' };
+    Object.keys(units).forEach((id) => { const r = $('#' + id, el); r.oninput = () => ($('#' + id + '-o', el).textContent = r.value + units[id]); });
+    $('#as-no', el).onclick = closeModal;
+    $('#as-ok', el).onclick = () => {
+      const v = (id) => Number($('#' + id, el).value);
+      closeModal();
+      runTool('audio_studio', item, {
+        start: v('as-start'), end: v('as-end') || 0, volume: v('as-volume') / 100, speed: v('as-speed') / 100,
+        bass: v('as-bass'), treble: v('as-treble'), fade_in: v('as-fi'), fade_out: v('as-fo'),
+        normalize: $('#as-norm', el).checked, reverse: $('#as-rev', el).checked, fmt: $('#as-fmt', el).value,
+      });
+    };
+  });
+}
+function stickerDialog(item, start) {
+  if (item.kind === 'image') return runTool('sticker', item);
+  modal(`<h3>🏷 صنع ملصق (WebP 512×512)</h3>
+    <label class="row">النوع <select id="st-type"><option value="0">ثابت (لقطة)</option><option value="4" selected>متحرك</option></select></label>
+    <label class="row">من الثانية <input id="st-start" type="number" step="0.5" value="${(start || 0).toFixed(1)}" style="width:90px"></label>
+    <label class="row">مدة المتحرك <input id="st-len" type="number" step="0.5" min="1" max="8" value="4" style="width:90px"> ثانية</label>
+    <div class="hint">الملصق المتحرك يتقلّل حجمه لين يصير تحت ١ ميقا (يناسب واتساب).</div>
+    <div class="row" style="justify-content:flex-end;margin-top:12px"><button class="ghost" id="st-no">إلغاء</button><button class="primary" id="st-ok">سوّه</button></div>`, (el) => {
+    $('#st-no', el).onclick = closeModal;
+    $('#st-ok', el).onclick = () => {
+      closeModal();
+      runTool('sticker', item, { start: Number($('#st-start', el).value), seconds: $('#st-type', el).value === '0' ? 0 : Number($('#st-len', el).value) });
+    };
+  });
+}
+
+/* ------------------------------------------------------------------ built-in browser */
+const browseInput = $('#browse-url');
+browseInput.oninput = () => ($('#browse-clear').hidden = !browseInput.value);
+browseInput.onfocus = () => browseInput.select();
+$('#browse-clear').onclick = () => { browseInput.value = ''; $('#browse-clear').hidden = true; browseInput.focus(); };
+$('#browse-go').onclick = async () => { if (browseInput.value.trim()) await api().browse(browseInput.value.trim()); };
+browseInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') $('#browse-go').click(); });
+
+/* ------------------------------------------------------------------ voice */
+let recorder = null;
+const blobToB64 = (blob) => new Promise((resolve) => { const r = new FileReader(); r.onload = () => resolve(String(r.result).split(',')[1]); r.readAsDataURL(blob); });
+$('#mic').onclick = async () => {
+  if (recorder) return recorder.stop();
+  let stream;
+  try { stream = await navigator.mediaDevices.getUserMedia({ audio: true }); } catch { return toast('ما قدرت أوصل للمايك. فعّله من خصوصية ويندوز ← الميكروفون', 5000); }
+  const chunks = [];
+  const rec = (recorder = new MediaRecorder(stream));
+  rec.ondataavailable = (e) => chunks.push(e.data);
+  rec.onstop = async () => {
+    stream.getTracks().forEach((t) => t.stop());
+    $('#mic').classList.remove('rec');
+    $('#mic').textContent = '🎤';
+    recorder = null;
+    const blob = new Blob(chunks, { type: rec.mimeType });
+    if (blob.size < 1500) return toast('ما سمعت شي');
+    toast('أسمعك…');
+    const reply = await api().voice(await blobToB64(blob), blob.type);
+    if (reply.error) return toast(reply.error, 5000);
+    if (!reply.text) return toast('ما فهمت الكلام');
+    $('#ask').value = reply.text;
+    state.viaVoice = true;
+    $('#send').click();
+  };
+  rec.start();
+  $('#mic').classList.add('rec');
+  $('#mic').textContent = '⏹';
+  setTimeout(() => { if (recorder === rec) rec.stop(); }, 30000);
+};
+function speak(text) {
+  try {
+    speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(text.replace(/[*_`#]/g, ''));
+    u.lang = /[؀-ۿ]/.test(text) ? 'ar-SA' : 'en-US';
+    speechSynthesis.speak(u);
+  } catch {}
+}
