@@ -14,6 +14,10 @@ BASE = os.environ.get('NAZZEL_TEST_SERVER', 'http://127.0.0.1:8765')
 
 
 def run():
+    try:
+        sys.stdout.reconfigure(encoding='utf-8', errors='replace')   # Windows consoles are cp1252: Arabic names must not crash the report
+    except Exception:
+        pass
     tmp = tempfile.mkdtemp(prefix='nazzel-test-')
     os.environ.update(APPDATA=tmp, LOCALAPPDATA=tmp, USERPROFILE=tmp, HOME=tmp)
     os.makedirs(os.path.join(tmp, 'Downloads'), exist_ok=True)
