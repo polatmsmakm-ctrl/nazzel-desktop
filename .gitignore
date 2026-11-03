@@ -4,3 +4,4 @@ dist/
 tools/
 *.spec
 Output/
+nazzel_desktop/build.txt

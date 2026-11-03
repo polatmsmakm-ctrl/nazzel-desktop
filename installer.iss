@@ -37,3 +37,4 @@ Name: "{userdesktop}\Nazzel"; Filename: "{app}\Nazzel.exe"; Tasks: desktopicon
 
 [Run]
 Filename: "{app}\Nazzel.exe"; Description: "{cm:LaunchProgram,Nazzel}"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\Nazzel.exe"; Flags: nowait; Check: WizardSilent

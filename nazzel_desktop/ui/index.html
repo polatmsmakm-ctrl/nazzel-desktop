@@ -19,6 +19,7 @@
       <button data-view="settings"><span class="i">⚙</span><span>الإعدادات</span></button>
     </nav>
     <div id="tasks"></div>
+    <button class="primary small" id="upd-banner" hidden style="margin:8px">⬆ فيه تحديث جديد</button>
     <div class="version" id="version"></div>
   </aside>
 
@@ -162,6 +163,18 @@
         <label>الخلفية <select data-s="sub_background"><option value="box">مربع</option><option value="soft">شفاف</option><option value="outline">حدود بس</option></select></label>
         <label>الحجم <input type="range" min="0.7" max="2" step="0.1" data-s="sub_scale" data-num></label>
         <label class="check"><input type="checkbox" data-s="dual_subs"> ترجمتين مع بعض (العربي فوق والإنجليزي تحت) لما تكون موجودة</label>
+      </div>
+      <div class="card form">
+        <h3>تحديث البرنامج</h3>
+        <div id="upd-msg" class="hint">—</div>
+        <div class="row"><button class="ghost small" id="upd-check">تحقق من تحديث</button><button class="primary small" id="upd-go" hidden>حدّث الحين</button></div>
+      </div>
+      <div class="card form">
+        <h3>إضافة كروم وإيدج</h3>
+        <div class="hint">زر في المتصفح العادي (وبالكليك اليمين على أي فيديو أو رابط) يرسله لنزّل وينزل علطول.<br>
+        ١) اضغط «افتح مجلد الإضافة» ٢) في كروم افتح <code>chrome://extensions</code> (إيدج: <code>edge://extensions</code>) وفعّل «وضع المطوّر»
+        ٣) اضغط «تحميل إضافة غير مضغوطة» واختار المجلد. أول مرة يسألك المتصفح «فتح نزّل؟» اختار السماح دائماً.</div>
+        <button class="ghost small" id="ext-open">📂 افتح مجلد الإضافة</button>
       </div>
       <div class="card form" id="bg-card">
         <h3>التشغيل بالخلفية</h3>

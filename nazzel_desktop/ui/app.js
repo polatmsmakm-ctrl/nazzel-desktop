@@ -784,6 +784,7 @@ async function checkClipboard() {
 
 window.addEventListener('pywebviewready', async () => {
   initStartupBox();
+  setTimeout(() => checkUpdate(true), 4000);
   const s = await api().get_settings();
   state.settings = s;
   state.mode = s.mode || 'video';
@@ -1031,3 +1032,32 @@ async function initStartupBox() {
   box.checked = !!(await api().get_settings()).run_at_startup;
   box.onchange = async () => { const ok = await api().set_startup(box.checked); if (!ok) { box.checked = false; toast('ما قدرت أفعّلها'); } };
 }
+
+
+/* ------------------------------------------------------------------ self-update */
+let updateInfo = null;
+async function checkUpdate(quiet) {
+  if (!quiet) $('#upd-msg').textContent = 'أشيك…';
+  const r = await api().update_check();
+  updateInfo = r;
+  if (r.error) { if (!quiet) $('#upd-msg').textContent = 'ما قدرت أشيك الحين'; return; }
+  const has = r.available;
+  $('#upd-banner').hidden = !has;
+  $('#upd-go').hidden = !has;
+  $('#upd-msg').textContent = has ? `فيه نسخة جديدة (بناء ${r.build}، عندك ${r.current}).` : (r.current ? `عندك آخر نسخة (بناء ${r.current}).` : 'هذي نسخة تجريبية.');
+}
+async function installUpdate() {
+  if (!updateInfo?.available) return;
+  if (!updateInfo.installed || !updateInfo.url) {
+    toast('هذي النسخة المحمولة: نزّل الجديدة من صفحة الإصدارات');
+    return api().open_release_page();
+  }
+  if (!confirm('ينزّل التحديث ويثبّته، والبرنامج يتسكّر ويرجع ينفتح لحاله. تكمل؟')) return;
+  await api().update_install(updateInfo.url);
+  toast('أنزّل التحديث… البرنامج بيتسكّر ويرجع لحاله', 6000);
+  refreshTasks();
+}
+$('#upd-check').onclick = () => checkUpdate(false);
+$('#upd-go').onclick = installUpdate;
+$('#upd-banner').onclick = () => { show('settings'); installUpdate(); };
+$('#ext-open').onclick = async () => { const f = await api().open_extension_folder(); if (!f) toast('المجلد يطلع في النسخة المثبتة'); };

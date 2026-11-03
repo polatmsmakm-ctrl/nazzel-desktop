@@ -410,6 +410,34 @@ class Api:
                 pass
         return count
 
+    # ------------------------------------------------------------ self-update + browser extension
+
+    def update_check(self):
+        from . import updater
+        return updater.check()
+
+    def update_install(self, url):
+        """Downloads the new installer (a background task); when done it runs and this copy closes."""
+        from . import updater
+
+        def work(progress):
+            updater.download_and_install(url, progress)
+            threading.Timer(1.5, lambda: os._exit(0)).start()
+            return 'يتحدث…'
+        return self._task('تحديث نزّل', work, 'update')
+
+    def open_release_page(self):
+        from . import updater
+        self.open_url(updater.RELEASES)
+
+    def open_extension_folder(self):
+        from .core.settings import resource
+        folder = resource('extension')
+        if os.name == 'nt' and os.path.isdir(folder):
+            os.startfile(folder)
+            return folder
+        return None
+
     def browse_history(self):
         from . import browser
         return browser.BrowserApi(self).history()

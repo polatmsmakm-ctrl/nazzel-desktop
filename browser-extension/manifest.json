@@ -1,0 +1,14 @@
+{
+  "manifest_version": 3,
+  "name": "نزّل — أرسل للبرنامج",
+  "short_name": "نزّل",
+  "version": "1.0.0",
+  "description": "زر يرسل الفيديو أو الصفحة أو أي رابط لبرنامج نزّل على الكمبيوتر وينزل علطول.",
+  "permissions": ["contextMenus", "activeTab"],
+  "background": { "service_worker": "background.js" },
+  "action": {
+    "default_title": "نزّل هالصفحة بنزّل",
+    "default_icon": { "16": "icon16.png", "32": "icon32.png", "48": "icon48.png", "128": "icon128.png" }
+  },
+  "icons": { "16": "icon16.png", "32": "icon32.png", "48": "icon48.png", "128": "icon128.png" }
+}

@@ -23,6 +23,8 @@ mimetypes.add_type('application/javascript', '.js')
 
 class Handler(http.server.BaseHTTPRequestHandler):
     on_show = None
+    on_add = None
+    add_token = ''
     protocol_version = 'HTTP/1.1'
     # set only for tests / --browser: lets a normal browser call the API over HTTP
     dev_api = None
@@ -57,6 +59,15 @@ class Handler(http.server.BaseHTTPRequestHandler):
         path = urllib.parse.unquote(parsed.path)
         query = urllib.parse.parse_qs(parsed.query)
         try:
+            if path == '/__add':           # a link from the browser extension, through a second launch
+                token = (query.get('k') or [''])[0]
+                if not Handler.add_token or token != Handler.add_token or not Handler.on_add:
+                    return self.send_error(403)
+                Handler.on_add((query.get('u') or [''])[0], (query.get('m') or ['video'])[0])
+                self.send_response(200)
+                self.send_header('Content-Length', '0')
+                self.end_headers()
+                return
             if path == '/__show':          # a second launch asks the running copy to show its window
                 if Handler.on_show:
                     Handler.on_show()

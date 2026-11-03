@@ -53,23 +53,75 @@ def _port_file():
     return os.path.join(data_dir(), 'port.txt')
 
 
-def remember_port(url):
+def remember_port(url, token=''):
     try:
         with open(_port_file(), 'w') as fh:
-            fh.write(url)
+            fh.write(url + '\n' + token)
     except OSError:
         pass
 
 
-def show_running_copy():
-    """True when another copy answered (and shows its window): this one should quit."""
+def _running():
     try:
         with open(_port_file()) as fh:
-            url = fh.read().strip()
+            lines = fh.read().split('\n')
+        return lines[0].strip(), (lines[1].strip() if len(lines) > 1 else '')
+    except OSError:
+        return '', ''
+
+
+def show_running_copy():
+    """True when another copy answered (and shows its window): this one should quit."""
+    url, _ = _running()
+    if not url:
+        return False
+    try:
         with urllib.request.urlopen(url + '/__show', timeout=1.5) as response:
             return response.status == 200
     except Exception:
         return False
+
+
+def send_to_running_copy(link, mode):
+    """Hands a link (from the browser extension) to the copy that is already open. True when it took it."""
+    import urllib.parse
+    url, token = _running()
+    if not url or not token:
+        return False
+    query = urllib.parse.urlencode({'u': link, 'm': mode or 'video', 'k': token})
+    try:
+        with urllib.request.urlopen(f'{url}/__add?{query}', timeout=3) as response:
+            return response.status == 200
+    except Exception:
+        return False
+
+
+def parse_protocol(argv):
+    """nazzel://download?url=…&mode=… on the command line -> (link, mode) or None."""
+    import urllib.parse
+    for arg in argv[1:]:
+        if arg.lower().startswith('nazzel:'):
+            query = urllib.parse.parse_qs(urllib.parse.urlsplit(arg).query)
+            link = (query.get('url') or [''])[0]
+            if link.startswith(('http://', 'https://')):
+                return link, (query.get('mode') or ['video'])[0]
+    return None
+
+
+def register_protocol():
+    """Makes nazzel:// links (the browser extension) open this app. Per user, no admin rights."""
+    if os.name != 'nt' or not getattr(sys, 'frozen', False):
+        return
+    import winreg
+    command = f'"{sys.executable}" "%1"'
+    try:
+        with winreg.CreateKey(winreg.HKEY_CURRENT_USER, r'Software\Classes\nazzel') as key:
+            winreg.SetValueEx(key, '', 0, winreg.REG_SZ, 'URL:Nazzel')
+            winreg.SetValueEx(key, 'URL Protocol', 0, winreg.REG_SZ, '')
+        with winreg.CreateKey(winreg.HKEY_CURRENT_USER, r'Software\Classes\nazzel\shell\open\command') as key:
+            winreg.SetValueEx(key, '', 0, winreg.REG_SZ, command)
+    except OSError:
+        pass
 
 
 # ---- the tray icon

@@ -54,10 +54,15 @@ jobs:
           Stop-Process -Id $server.Id -Force
           exit $code
 
+      - name: Build number (for the in-app updater)
+        shell: bash
+        run: echo "${{ github.run_number }}" > nazzel_desktop/build.txt
+
       - name: Build Nazzel.exe
         run: >
           pyinstaller --noconfirm --windowed --name Nazzel --icon nazzel_desktop/ui/icon.ico
-          --add-data "nazzel_desktop/ui;ui" --add-data "tools;tools"
+          --add-data "nazzel_desktop/ui;ui" --add-data "tools;tools" --add-data "nazzel_desktop/build.txt;."
+          --add-data "browser-extension;extension"
           --collect-all yt_dlp --collect-all yt_dlp_ejs --collect-all gallery_dl --collect-all webview
           --collect-data certifi --collect-all py7zr --collect-all segno --hidden-import pystray._win32 --hidden-import nazzel_desktop.selftest
           run.py
@@ -82,6 +87,7 @@ jobs:
           }
           iscc installer.iss
           Compress-Archive -Path dist\Nazzel\* -DestinationPath Output\Nazzel-Portable.zip
+          Compress-Archive -Path browser-extension\* -DestinationPath Output\Nazzel-Extension.zip
           Get-ChildItem Output
 
       - uses: actions/upload-artifact@v4
@@ -99,5 +105,5 @@ jobs:
 
           رابط ثابت لآخر نسخة:
           https://github.com/${{ github.repository }}/releases/latest/download/Nazzel-Setup.exe"
-          gh release create "v${NAZZEL_VERSION}" Output/Nazzel-Setup.exe Output/Nazzel-Portable.zip --target "$GITHUB_SHA" \
+          gh release create "v${NAZZEL_VERSION}" Output/Nazzel-Setup.exe Output/Nazzel-Portable.zip Output/Nazzel-Extension.zip --target "$GITHUB_SHA" \
             --title "نزّل للكمبيوتر ${NAZZEL_VERSION}" --notes "$NOTES" --latest

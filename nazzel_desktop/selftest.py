@@ -117,6 +117,12 @@ def run():
     check('transfer send + range', reply.status == 206 and reply.read() == b'2345' and info['mode'] == 'send')
     down.stop()
     check('transfer qr', '<svg' in transfer.qr_svg('http://192.168.1.5:5000/t/abc/'))
+    # browser extension address + updater
+    from nazzel_desktop import tray, updater
+    got_link = tray.parse_protocol(['Nazzel.exe', 'nazzel://download?url=https%3A%2F%2Fyoutu.be%2Fabc&mode=audio'])
+    check('extension link', got_link == ('https://youtu.be/abc', 'audio') and tray.parse_protocol(['x', 'nazzel://download?url=javascript:1']) is None,
+          str(got_link))
+    check('updater build number', isinstance(updater.current_build(), int))
     # assistant memory
     from nazzel_desktop.core.memory import MEMORY
     MEMORY.clear()

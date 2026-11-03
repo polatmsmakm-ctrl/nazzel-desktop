@@ -10,8 +10,12 @@ def main():
         sys.exit(run())
 
     from . import tray
-    if '--browser' not in sys.argv and tray.show_running_copy():
-        return                      # Nazzel is already running (maybe in the tray): its window was shown
+    incoming = tray.parse_protocol(sys.argv)          # a link from the browser extension
+    if '--browser' not in sys.argv:
+        if incoming and tray.send_to_running_copy(*incoming):
+            return                  # the open copy took the link
+        if not incoming and tray.show_running_copy():
+            return                  # Nazzel is already running (maybe in the tray): its window was shown
 
     from . import core
     core.boot()
@@ -34,7 +38,11 @@ def main():
     background = '--background' in sys.argv
     api = Api()
     url = server.start()
-    tray.remember_port(url)
+    import secrets
+    token = secrets.token_urlsafe(16)
+    server.Handler.add_token = token
+    tray.remember_port(url, token)
+    tray.register_protocol()
     window = webview.create_window('نزّل', url, js_api=api, width=1280, height=820, min_size=(960, 640),
                                    background_color='#0B0F10', text_select=True, hidden=background)
     api.window = window
@@ -51,6 +59,20 @@ def main():
             pass
 
     server.Handler.on_show = show_window
+
+    def add_from_browser(link, mode):
+        if api.add(link, mode if mode in ('video', 'audio', 'photos') else 'video'):
+            api.notify('انضاف للتحميلات من المتصفح ⬇')
+            show_window()
+            try:
+                window.evaluate_js("show('download'); refreshJobs()")
+            except Exception:
+                pass
+
+    server.Handler.on_add = add_from_browser
+    if incoming:
+        import threading
+        threading.Timer(3.0, lambda: add_from_browser(*incoming)).start()
 
     def quit_app(icon=None):
         state['quit'] = True
