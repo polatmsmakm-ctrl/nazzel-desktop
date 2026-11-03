@@ -7,7 +7,8 @@ import threading
 import time
 import uuid
 
-from .core import engine, media, gemini, subs
+from .core import engine, media, gemini, subs, transfer
+from .core.memory import MEMORY
 from .core.downloads import manager
 from .core.extras import SUBSCRIPTIONS, extract, ipa_info
 from .core.library import LIBRARY
@@ -55,10 +56,17 @@ ACTIONS = [
                     'required': ['url']}},
     {'name': 'search_library', 'description': 'List downloaded files whose title matches (empty = newest).',
      'parameters': {'type': 'OBJECT', 'properties': {'query': {'type': 'STRING'}}}},
+    {'name': 'remember', 'description': "Save a short note about the user to remember in later chats (a preference, a name, a habit: "
+                                       "their usual video quality, favourite channels, how they like files named). Only when the user asks you to "
+                                       "remember something or states a lasting preference.",
+     'parameters': {'type': 'OBJECT', 'properties': {'fact': {'type': 'STRING', 'description': 'One short sentence'}},
+                    'required': ['fact']}},
+    {'name': 'forget', 'description': 'Delete saved notes about the user that contain these words.',
+     'parameters': {'type': 'OBJECT', 'properties': {'query': {'type': 'STRING'}}, 'required': ['query']}},
     {'name': 'play_from_library', 'description': 'Play a downloaded file in the player.',
      'parameters': {'type': 'OBJECT', 'properties': {'query': {'type': 'STRING'}}, 'required': ['query']}},
 ]
-ACTION_WORDS = ('نزل', 'نزّل', 'حمل', 'حمّل', 'تحميل', 'تابع', 'شغل', 'شغّل', 'ملفاتي', 'download', 'follow', 'play')
+ACTION_WORDS = ('تذكر', 'تذكّر', 'احفظ', 'انسى', 'انسَ', 'remember', 'forget', 'نزل', 'نزّل', 'حمل', 'حمّل', 'تحميل', 'تابع', 'شغل', 'شغّل', 'ملفاتي', 'download', 'follow', 'play')
 
 
 class Api:
@@ -317,6 +325,91 @@ class Api:
         from . import browser
         return browser.open_window(self, text)
 
+    # ------------------------------------------------------------ phone <-> PC over Wi-Fi
+
+    def transfer_start(self, mode, keys=None):
+        """Shows a code for the phone: 'receive' (phone uploads here) or 'send' (phone downloads the chosen files)."""
+        self.transfer_stop()
+        files = []
+        for key in keys or []:
+            path = LIBRARY.path(key)
+            if os.path.isfile(path):
+                files.append((path, os.path.basename(path)))
+        if mode == 'send' and not files:
+            return {'error': 'ما اخترت ملفات'}
+        self._transfer = transfer.start(mode if mode in ('send', 'receive') else 'receive', files)
+        session = self._transfer
+        return {'url': session.url, 'qr': transfer.qr_svg(session.url), 'mode': session.mode,
+                'files': [name for _, name in files]}
+
+    def transfer_status(self):
+        session = getattr(self, '_transfer', None)
+        return {'active': bool(session and session.alive()), 'received': list(session.received) if session else []}
+
+    def transfer_stop(self):
+        session = getattr(self, '_transfer', None)
+        if session:
+            session.stop()
+        self._transfer = None
+        return True
+
+    # ------------------------------------------------------------ assistant memory + text in pictures
+
+    def memory_list(self):
+        return {'enabled': MEMORY.enabled, 'items': MEMORY.list()}
+
+    def memory_delete(self, item_id):
+        MEMORY.delete(item_id)
+        return True
+
+    def memory_clear(self):
+        MEMORY.clear()
+        return True
+
+    def ocr(self, key, at=None, translate=False):
+        """The text in an image file, or in the video frame at `at` seconds (through Gemini)."""
+        path = LIBRARY.path(key)
+        temp = None
+        try:
+            if media.kind(path) == 'video':
+                temp = os.path.join(cache_dir(), f'ocr-{uuid.uuid4().hex[:8]}.png')
+                os.makedirs(cache_dir(), exist_ok=True)
+                media._run(['-ss', f'{float(at or 0):.3f}', '-i', path, '-frames:v', '1', temp])
+                path = temp
+            return {'text': gemini.read_image_text(path, bool(translate))}
+        except gemini.GeminiError as e:
+            return {'error': e.friendly() if e.code else e.message}
+        except Exception as e:
+            return {'error': str(e)[:200]}
+        finally:
+            if temp and os.path.exists(temp):
+                try:
+                    os.remove(temp)
+                except OSError:
+                    pass
+
+    # ------------------------------------------------------------ background (start with Windows, tray)
+
+    def set_startup(self, on):
+        from . import tray
+        ok = tray.set_startup(bool(on))
+        settings().update({'run_at_startup': bool(on) and ok})
+        return ok
+
+    def startup_available(self):
+        from . import tray
+        return os.name == 'nt' and tray.startup_command() is not None
+
+    def import_dropped(self, paths):
+        """Files dropped on the window go into the library."""
+        count = self.import_files([p for p in paths if os.path.isfile(p)])
+        if count and self.window:
+            try:
+                self.window.evaluate_js(f"toast('انضاف {count} ملف ✓'); loadLibrary && loadLibrary()")
+            except Exception:
+                pass
+        return count
+
     def browse_history(self):
         from . import browser
         return browser.BrowserApi(self).history()
@@ -428,7 +521,8 @@ class Api:
             contents = history + [{'role': 'user', 'parts': parts}]
             reply = {'role': 'model', 'text': '', 'actions': [], 'sources': [], 'play': None}
             for _ in range(4):
-                answer = gemini.generate(contents, search=settings().get('gemini_search') and not wants_action,
+                answer = gemini.generate(contents, system=gemini.SYSTEM + MEMORY.prompt(),
+                                         search=settings().get('gemini_search') and not wants_action,
                                          functions=ACTIONS if wants_action else None, low_media=low)
                 reply['text'] += answer['text']
                 reply['sources'] = answer['sources'] or reply['sources']
@@ -470,6 +564,14 @@ class Api:
         if name == 'follow_channel':
             error = SUBSCRIPTIONS.add(url, kind)
             return (error or 'صرت تتابع القناة'), {'ok': not error, 'error': error}, None
+        if name == 'remember':
+            if not MEMORY.enabled:
+                return 'ذاكرة المساعد مطفية من الإعدادات', {'ok': False, 'error': 'memory is switched off'}, None
+            item = MEMORY.add(args.get('fact'))
+            return (f'حفظت: {item["text"]}' if item else 'ما فهمت وش أحفظ'), {'ok': bool(item)}, None
+        if name == 'forget':
+            gone = MEMORY.forget(args.get('query'))
+            return (f'نسيت {gone} معلومة' if gone else 'ما لقيت شي أنساه'), {'ok': bool(gone), 'removed': gone}, None
         words = [w for w in (args.get('query') or '').lower().split() if len(w) > 1]
         items = LIBRARY.all_items()
         if words:

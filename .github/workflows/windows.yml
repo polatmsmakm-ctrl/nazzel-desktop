@@ -59,7 +59,7 @@ jobs:
           pyinstaller --noconfirm --windowed --name Nazzel --icon nazzel_desktop/ui/icon.ico
           --add-data "nazzel_desktop/ui;ui" --add-data "tools;tools"
           --collect-all yt_dlp --collect-all yt_dlp_ejs --collect-all gallery_dl --collect-all webview
-          --collect-data certifi --collect-all py7zr --hidden-import nazzel_desktop.selftest
+          --collect-data certifi --collect-all py7zr --collect-all segno --hidden-import pystray._win32 --hidden-import nazzel_desktop.selftest
           run.py
 
       - name: Smoke test of the built app

@@ -1,10 +1,12 @@
 """End-to-end check run by CI on Windows (and usable anywhere): downloads from the local test
 server, the ffmpeg tools, archives, subtitles and the local media server."""
+import json
 import os
 import shutil
 import sys
 import tempfile
 import time
+import urllib.parse
 import urllib.request
 import zipfile
 
@@ -82,6 +84,41 @@ def run():
         check('thumbnail', bool(media.thumbnail(src)))
 
     from nazzel_desktop import browser
+    # phone <-> PC transfer: upload into the downloads folder, download with a Range, wrong code refused
+    import urllib.request
+    from nazzel_desktop.core import transfer
+    from nazzel_desktop.core.settings import settings
+    sent_file = os.path.join(tmp, 'send me.txt')
+    with open(sent_file, 'w', encoding='utf-8') as fh:
+        fh.write('0123456789')
+    got = []
+    up = transfer.start('receive', on_event=lambda kind, name: got.append(name))
+    base = f'http://127.0.0.1:{up.port}/t/{up.token}'
+    req = urllib.request.Request(base + '/up?name=' + urllib.parse.quote('من الجوال.txt'), data=b'hello phone', method='PUT')
+    ok_up = json.loads(urllib.request.urlopen(req, timeout=10).read()).get('ok')
+    check('transfer receive', ok_up and got and os.path.exists(os.path.join(settings().downloads, got[0])), str(got))
+    try:
+        urllib.request.urlopen(f'http://127.0.0.1:{up.port}/t/wrong/info', timeout=5)
+        bad = False
+    except Exception:
+        bad = True
+    check('transfer wrong code refused', bad)
+    check('transfer page', b'<html' in urllib.request.urlopen(base + '/', timeout=5).read())
+    up.stop()
+    down = transfer.start('send', [(sent_file, 'send me.txt')])
+    info = json.loads(urllib.request.urlopen(f'http://127.0.0.1:{down.port}/t/{down.token}/info', timeout=5).read())
+    link = info['files'][0]['url'].replace(transfer.lan_ip(), '127.0.0.1')
+    ranged = urllib.request.Request(link, headers={'Range': 'bytes=2-5'})
+    reply = urllib.request.urlopen(ranged, timeout=5)
+    check('transfer send + range', reply.status == 206 and reply.read() == b'2345' and info['mode'] == 'send')
+    down.stop()
+    check('transfer qr', '<svg' in transfer.qr_svg('http://192.168.1.5:5000/t/abc/'))
+    # assistant memory
+    from nazzel_desktop.core.memory import MEMORY
+    MEMORY.clear()
+    MEMORY.add('يحب جودة 720 للفيديوهات')
+    check('memory prompt', '720' in MEMORY.prompt())
+    check('memory forget', MEMORY.forget('720') == 1 and not MEMORY.prompt())
     check('browser address', browser.normalize('youtube.com/x') == 'https://youtube.com/x'
           and browser.normalize('قطط جميلة').startswith('https://www.google.com/search?q=') and browser.normalize('  ') == '')
     z = os.path.join(tmp, 'a.zip')

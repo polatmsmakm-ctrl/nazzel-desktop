@@ -9,12 +9,16 @@ def main():
         from .selftest import run
         sys.exit(run())
 
+    from . import tray
+    if '--browser' not in sys.argv and tray.show_running_copy():
+        return                      # Nazzel is already running (maybe in the tray): its window was shown
+
     from . import core
     core.boot()
     from . import server
     from .api import Api
     from .core.extras import SUBSCRIPTIONS
-    from .core.settings import resource
+    from .core.settings import resource, settings
 
     if '--browser' in sys.argv:
         # no window: open the interface in the default browser (development)
@@ -27,15 +31,67 @@ def main():
             time.sleep(3600)
 
     import webview
+    background = '--background' in sys.argv
     api = Api()
     url = server.start()
+    tray.remember_port(url)
     window = webview.create_window('نزّل', url, js_api=api, width=1280, height=820, min_size=(960, 640),
-                                   background_color='#0B0F10', text_select=True)
+                                   background_color='#0B0F10', text_select=True, hidden=background)
     api.window = window
     api.base_url = url
     SUBSCRIPTIONS.start_timer(api.notify)
+
+    state = {'quit': False, 'icon': None}
+
+    def show_window():
+        try:
+            window.show()
+            window.restore()
+        except Exception:
+            pass
+
+    server.Handler.on_show = show_window
+
+    def quit_app(icon=None):
+        state['quit'] = True
+        try:
+            if icon:
+                icon.stop()
+            window.destroy()
+        except Exception:
+            pass
+        os._exit(0)
+
+    def on_closing():
+        # "close to the tray" (Settings): the window hides, downloads and followed channels keep going
+        if not state['quit'] and state['icon'] is not None and settings().get('close_to_tray'):
+            window.hide()
+            return False
+        return True
+
+    def ready(win):
+        # runs once the window exists: the tray icon, the drag & drop of files
+        if settings().get('close_to_tray') or settings().get('run_at_startup') or background:
+            state['icon'] = tray.start_tray(win, lambda: SUBSCRIPTIONS.check_all(), quit_app)
+        try:
+            win.events.closing += on_closing
+        except Exception:
+            pass
+        try:
+            from webview.dom import DOMEventHandler
+
+            def on_drop(event):
+                files = (event.get('dataTransfer') or {}).get('files') or []
+                paths = [f.get('pywebviewFullPath') for f in files if f.get('pywebviewFullPath')]
+                if paths:
+                    api.import_dropped(paths)
+
+            win.dom.document.events.drop += DOMEventHandler(on_drop, True, False)
+        except Exception:
+            pass          # an older pywebview: only dropped links work
+
     icon = resource('ui', 'icon.ico')
-    webview.start(debug='--debug' in sys.argv, icon=icon if os.path.exists(icon) else None,
+    webview.start(ready, window, debug='--debug' in sys.argv, icon=icon if os.path.exists(icon) else None,
                   private_mode=False, storage_path=os.path.join(os.environ.get('LOCALAPPDATA', '.'), 'Nazzel', 'webview'))
 
 

@@ -259,3 +259,16 @@ def transcribe_audio(b64, mime='audio/webm'):
         system='You are a precise speech-to-text engine. Output only the transcription.', model=None)
     text = (answer.get('text') or '').strip()
     return '' if text == '...' else text
+
+
+def read_image_text(image_path, translate=False):
+    """The text in a picture (a photo, a screenshot, a video frame). translate=True: the text translated to Arabic."""
+    part = file_part(image_path, _key())
+    ask = ('اقرأ كل النص الظاهر في الصورة بالضبط وبنفس لغته وترتيبه، بدون أي شرح أو إضافة. '
+           'إذا ما في نص اكتب: ما لقيت نص.')
+    if translate:
+        ask = ('اقرأ كل النص الظاهر في الصورة، وترجمه للعربية بشكل واضح. اكتب النص الأصلي أولاً ثم الترجمة تحته '
+               'تحت عنوان «الترجمة». إذا ما في نص اكتب: ما لقيت نص.')
+    answer = generate([{'role': 'user', 'parts': [part, {'text': ask}]}], search=False,
+                      system='You are a precise OCR and translation engine.', low_media=False)
+    return (answer.get('text') or '').strip()

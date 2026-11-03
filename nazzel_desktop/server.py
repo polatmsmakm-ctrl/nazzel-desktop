@@ -22,6 +22,7 @@ mimetypes.add_type('application/javascript', '.js')
 
 
 class Handler(http.server.BaseHTTPRequestHandler):
+    on_show = None
     protocol_version = 'HTTP/1.1'
     # set only for tests / --browser: lets a normal browser call the API over HTTP
     dev_api = None
@@ -56,6 +57,13 @@ class Handler(http.server.BaseHTTPRequestHandler):
         path = urllib.parse.unquote(parsed.path)
         query = urllib.parse.parse_qs(parsed.query)
         try:
+            if path == '/__show':          # a second launch asks the running copy to show its window
+                if Handler.on_show:
+                    Handler.on_show()
+                self.send_response(200)
+                self.send_header('Content-Length', '0')
+                self.end_headers()
+                return
             if path.startswith('/media/'):
                 return self.send_file(LIBRARY.path(path[len('/media/'):]), head)
             if path.startswith('/cover/'):

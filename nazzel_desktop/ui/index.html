@@ -73,6 +73,7 @@
           <button class="ghost small" id="new-folder">📁 مجلد</button>
           <button class="ghost small" id="import">⤵ استيراد</button>
           <button class="ghost small" id="montage-btn">🎞 مونتاج</button>
+          <button class="ghost small" id="transfer-btn" title="نقل ملفات بين الجوال والكمبيوتر بالواي فاي">📱 جوال ⇄ كمبيوتر</button>
           <button class="ghost small" id="lib-open">📂</button>
         </div>
       </header>
@@ -142,6 +143,13 @@
         <label class="check"><input type="checkbox" data-s="gemini_search"> بحث جوجل للمعلومات الحديثة</label>
       </div>
       <div class="card form">
+        <h3>ذاكرة المساعد</h3>
+        <label class="check"><input type="checkbox" data-s="assistant_memory"> المساعد يتذكر تفضيلاتي (قل له «تذكر إني…»)</label>
+        <div id="mem-list" class="list"></div>
+        <div class="hint">كل معلومة تقدر تحذفها. ما يحفظ شي إلا إذا طلبت منه أو ذكرت له تفضيل ثابت.</div>
+        <button class="ghost small" id="mem-clear">امسح كل الذاكرة</button>
+      </div>
+      <div class="card form">
         <h3>ستريميو</h3>
         <label>رابط إضافة البث <span class="row"><input id="s-addon" placeholder="https://torrentio.strem.fun/…/manifest.json"><button class="ghost small" id="s-addon-test">اختبر</button></span></label>
         <div id="s-addon-msg" class="hint">مثل Torrentio مع Real-Debrid. الرابط فيه مفتاح خدمتك، لا تشاركه.</div>
@@ -153,6 +161,13 @@
         <label>اللون <select data-s="sub_color"><option value="white">أبيض</option><option value="yellow">أصفر</option><option value="cyan">سماوي</option><option value="lime">أخضر</option><option value="pink">وردي</option></select></label>
         <label>الخلفية <select data-s="sub_background"><option value="box">مربع</option><option value="soft">شفاف</option><option value="outline">حدود بس</option></select></label>
         <label>الحجم <input type="range" min="0.7" max="2" step="0.1" data-s="sub_scale" data-num></label>
+        <label class="check"><input type="checkbox" data-s="dual_subs"> ترجمتين مع بعض (العربي فوق والإنجليزي تحت) لما تكون موجودة</label>
+      </div>
+      <div class="card form" id="bg-card">
+        <h3>التشغيل بالخلفية</h3>
+        <label class="check"><input type="checkbox" id="s-startup"> شغّل نزّل مع ويندوز (يشتغل بالخلفية ويشيّك على المتابعات)</label>
+        <label class="check"><input type="checkbox" data-s="close_to_tray"> الإغلاق (✕) يخلّي البرنامج بالخلفية بدل ما يسكّر (أيقونة جنب الساعة)</label>
+        <div class="hint">من أيقونة الساعة: «افتح نزّل»، «شيّك على المتابعات»، «خروج». لو أول مرة فعّلتها، سكّر البرنامج وافتحه مرة ثانية.</div>
       </div>
       <div class="card form">
         <h3>المحرك</h3>
@@ -170,12 +185,14 @@
     <div class="row wrap">
       <select id="p-speed" title="السرعة"><option value="0.5">0.5×</option><option value="0.75">0.75×</option><option value="1" selected>1×</option><option value="1.25">1.25×</option><option value="1.5">1.5×</option><option value="2">2×</option><option value="3">3×</option></select>
       <select id="p-subs" title="الترجمة"></select>
+      <select id="p-subs2" title="ترجمة ثانية تحت الأولى" hidden></select>
       <button class="ghost small" id="p-delay-minus" title="الترجمة أبكر">− ترجمة</button>
       <span id="p-delay" class="mono">0.0</span>
       <button class="ghost small" id="p-delay-plus" title="الترجمة أبطأ">+ ترجمة</button>
       <button class="ghost small" id="p-prev" title="السابق">⏮</button>
       <button class="ghost small" id="p-next" title="التالي">⏭</button>
       <button class="ghost small" id="p-frame">📸 لقطة</button>
+      <button class="ghost small" id="p-ocr">📝 نص من اللقطة</button>
       <button class="ghost small" id="p-sticker">🏷 ملصق</button>
       <button class="ghost small" id="p-audio">🎚 صوت</button>
       <button class="ghost small" id="p-gif">GIF</button>
@@ -185,6 +202,7 @@
   </div>
   <div class="player-stage">
     <video id="video" controls autoplay playsinline></video>
+    <div id="p-dual" class="dual" hidden><div id="p-dual-a"></div><div id="p-dual-b"></div></div>
     <div id="p-error" class="p-error" hidden></div>
     <div id="p-prep" class="p-error" hidden></div>
     <button id="p-skip" class="skip" hidden>⏩ تخطي المقدمة</button>
@@ -197,6 +215,7 @@
 <div id="menu" class="menu" hidden></div>
 <div id="clip-banner" class="banner" hidden></div>
 <div id="toast" class="toast" hidden></div>
+<div id="dropzone" class="dropzone" hidden>⬇ أفلت الرابط أو الملفات هنا</div>
 
 <script src="app.js"></script>
 </body>

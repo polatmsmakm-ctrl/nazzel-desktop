@@ -59,6 +59,7 @@ function show(view) {
   if (view === 'follow') loadSubs();
   if (view === 'settings') loadSettings();
   if (view === 'browser') loadBrowserView();
+  if (view === 'settings') loadMemory();
 }
 $$('nav button').forEach((b) => (b.onclick = () => show(b.dataset.view)));
 
@@ -277,7 +278,9 @@ function itemMenu(e, item) {
   if (media) entries.push(['▶ تشغيل', () => openItem(item, state.items)]);
   entries.push(['↗ فتح بالبرنامج الافتراضي', () => api().open_external(item.key)]);
   entries.push(['📂 إظهار في المجلد', () => api().open_folder(item.key)]);
+  entries.push(['📱 أرسل للجوال (واي فاي)', () => transferDialog('send', [item.key])]);
   entries.push(['—']);
+  if (item.kind === 'image') entries.push(['📝 استخرج النص من الصورة', () => ocrDialog(item.key, 0, false)]);
   if (item.kind === 'video' && item.ext !== 'mp4') entries.push(['🔄 حوّل إلى MP4', () => runTool('mp4', item)]);
   if (media && item.ext !== 'mp3') entries.push(['🎵 حوّل إلى MP3', () => runTool('mp3', item)]);
   if (media) entries.push(['🎚 استوديو الصوت (قص، صوت، سرعة…)', () => audioStudioDialog(item)]);
@@ -492,7 +495,14 @@ async function play(item, queue) {
     track.dataset.i = i;
     video.appendChild(track);
   });
-  if (tracks.length) { $('#p-subs').value = '0'; setTimeout(() => selectSub('0'), 300); }
+  $('#p-subs2').innerHTML = `<option value="">+ ترجمة ثانية</option>` + tracks.map((t, i) => `<option value="${i}">${esc(langName(t.lang))}</option>`).join('');
+  $('#p-subs2').hidden = tracks.length < 2;
+  if (tracks.length) {
+    $('#p-subs').value = '0';
+    const ar = tracks.findIndex((t) => t.lang.startsWith('ar')), en = tracks.findIndex((t) => t.lang.startsWith('en'));
+    if (state.settings.dual_subs && ar >= 0 && en >= 0) { $('#p-subs').value = String(ar); $('#p-subs2').value = String(en); }
+    setTimeout(() => selectSub($('#p-subs').value), 300);
+  }
   video.playbackRate = Number($('#p-speed').value);
   video.onloadedmetadata = () => { if (details.position > 5 && details.position < video.duration - 10) video.currentTime = details.position; };
   video.onerror = () => {
@@ -544,7 +554,27 @@ function langName(code) {
   const number = (code.match(/[-_.](\d+)$/) || [])[1];
   return (names[base] || code) + (code.includes('ai') ? ' (ذكاء اصطناعي)' : '') + (number ? ` ${number}` : '');
 }
+/* two subtitle tracks at once: both are read by the page and drawn as two lines (the browser can't stack tracks) */
+function renderDual() {
+  const lines = ['#p-subs', '#p-subs2'].map((sel) => {
+    const v = $(sel).value;
+    const track = v === '' ? null : video.textTracks[Number(v)];
+    return track ? [...(track.activeCues || [])].map((c) => c.text.replace(/<[^>]+>/g, '')).join('\n') : '';
+  });
+  $('#p-dual-a').textContent = lines[0];
+  $('#p-dual-b').textContent = lines[1];
+}
+video.textTracks.addEventListener('addtrack', (e) => e.track.addEventListener('cuechange', renderDual));
+$('#p-subs2').onchange = () => selectSub($('#p-subs').value);
 function selectSub(value) {
+  const second = $('#p-subs2').hidden ? '' : $('#p-subs2').value;
+  if (second !== '' && value !== '') {
+    [...video.textTracks].forEach((t, i) => (t.mode = String(i) === value || String(i) === second ? 'hidden' : 'disabled'));
+    $('#p-dual').hidden = false;
+    renderDual();
+    return;
+  }
+  $('#p-dual').hidden = true;
   [...video.textTracks].forEach((t, i) => (t.mode = String(i) === value ? 'showing' : 'disabled'));
 }
 $('#p-subs').onchange = (e) => selectSub(e.target.value);
@@ -683,6 +713,13 @@ $('#sub-check').onclick = async () => {
 };
 
 /* ------------------------------------------------------------------ settings */
+async function loadMemory() {
+  const m = await api().memory_list();
+  $('#mem-list').innerHTML = m.items.map((i) => `<div class="row between"><span>${esc(i.text)}</span><button class="icon-btn" data-m="${i.id}">✕</button></div>`).join('')
+    || '<div class="hint">ما فيه شي محفوظ للحين</div>';
+  $$('#mem-list [data-m]').forEach((b) => (b.onclick = async () => { await api().memory_delete(b.dataset.m); loadMemory(); }));
+}
+$('#mem-clear').onclick = async () => { if (confirm('تمسح كل اللي يتذكره المساعد؟')) { await api().memory_clear(); loadMemory(); } };
 async function loadSettings() {
   const s = await api().get_settings();
   state.settings = s;
@@ -746,6 +783,7 @@ async function checkClipboard() {
 }
 
 window.addEventListener('pywebviewready', async () => {
+  initStartupBox();
   const s = await api().get_settings();
   state.settings = s;
   state.mode = s.mode || 'video';
@@ -886,4 +924,110 @@ function speak(text) {
     u.lang = /[؀-ۿ]/.test(text) ? 'ar-SA' : 'en-US';
     speechSynthesis.speak(u);
   } catch {}
+}
+
+
+/* ------------------------------------------------------------------ phone <-> PC */
+let transferTimer = null;
+async function transferDialog(mode, keys) {
+  clearInterval(transferTimer);
+  if (!mode) {
+    return modal(`<h3>📱 جوال ⇄ كمبيوتر</h3><p class="hint">الجوال والكمبيوتر على نفس الواي فاي. يطلع رمز QR تصوّره بكاميرا الجوال (أو بماسح QR داخل تطبيق نزّل على الآيفون).</p>
+      <div class="list"><button class="primary" id="tr-recv">📥 استقبل ملفات من الجوال</button>
+      <button class="ghost" id="tr-send">📤 أرسل ملفات للجوال</button></div>`, (el) => {
+      $('#tr-recv', el).onclick = () => transferDialog('receive');
+      $('#tr-send', el).onclick = pickForTransfer;
+    });
+  }
+  modal('<div class="empty">أجهّز…</div>');
+  const r = await api().transfer_start(mode, keys || []);
+  if (r.error) return modal(`<h3>📱</h3><p>${esc(r.error)}</p>`);
+  modal(`<h3>${mode === 'receive' ? '📥 استقبال من الجوال' : '📤 إرسال للجوال'}</h3>
+    <div style="display:flex;justify-content:center;margin:10px 0"><div style="background:#fff;border-radius:14px;padding:8px;width:260px;height:260px">${r.qr || ''}</div></div>
+    <div class="mono" style="word-break:break-all;text-align:center;direction:ltr">${esc(r.url)}</div>
+    <p class="hint">${mode === 'receive' ? 'صوّر الرمز بالجوال، اضغط «اختر ملفات» وهي توصل هنا علطول.' : 'صوّر الرمز بالجوال وحمّل الملفات: ' + esc(r.files.join('، '))}
+    <br>أول مرة ويندوز يسألك عن السماح بالشبكة: اختار «السماح» (شبكة خاصة).</p>
+    <div id="tr-got"></div>
+    <div class="row" style="justify-content:flex-end;margin-top:10px"><button class="ghost" id="tr-stop">إيقاف</button></div>`, (el) => {
+    $('#tr-stop', el).onclick = async () => { clearInterval(transferTimer); await api().transfer_stop(); closeModal(); loadLibrary(); };
+    let seen = 0;
+    transferTimer = setInterval(async () => {
+      const st = await api().transfer_status();
+      if (!st.active) { clearInterval(transferTimer); return; }
+      if (st.received.length !== seen) {
+        seen = st.received.length;
+        $('#tr-got', el).innerHTML = st.received.map((n) => `<div style="color:var(--ok)">✓ وصل: ${esc(n)}</div>`).join('');
+        toast('وصل ملف من الجوال ✓');
+      }
+    }, 1500);
+  });
+}
+async function pickForTransfer() {
+  const items = (await api().all_items()).filter((i) => i.kind !== 'folder').slice(0, 80);
+  modal(`<h3>اختار الملفات</h3><div style="max-height:46vh;overflow:auto;margin:10px 0">${items.map((i) =>
+    `<label class="row" style="padding:6px 0"><input type="checkbox" value="${esc(i.key)}"> ${esc(i.title)} <span class="hint">${fmtBytes(i.size)}</span></label>`).join('') || '<div class="empty">ما فيه ملفات</div>'}</div>
+    <div class="row" style="justify-content:flex-end"><button class="ghost" id="tp-no">إلغاء</button><button class="primary" id="tp-ok">اعرض الرمز</button></div>`, (el) => {
+    $('#tp-no', el).onclick = closeModal;
+    $('#tp-ok', el).onclick = () => {
+      const keys = $$('input:checked', el).map((c) => c.value);
+      if (keys.length) transferDialog('send', keys); else toast('اختار ملف');
+    };
+  });
+}
+$('#transfer-btn').onclick = () => transferDialog();
+
+
+/* ------------------------------------------------------------------ text from pictures */
+async function ocrDialog(key, at, translate) {
+  modal('<div class="empty">أقرأ النص…</div>');
+  const r = await api().ocr(key, at, translate);
+  if (r.error) return modal(`<h3>📝 النص</h3><p>${esc(r.error)}</p>`);
+  modal(`<h3>📝 النص${translate ? ' + الترجمة' : ''}</h3>
+    <textarea id="ocr-text" rows="12" style="width:100%">${esc(r.text)}</textarea>
+    <div class="row wrap" style="justify-content:flex-end;margin-top:10px">
+      <button class="ghost" id="ocr-close">إغلاق</button>
+      ${translate ? '' : '<button class="ghost" id="ocr-tr">🌐 ترجمه للعربي</button>'}
+      <button class="primary" id="ocr-copy">نسخ</button></div>`, (el) => {
+    $('#ocr-close', el).onclick = closeModal;
+    $('#ocr-copy', el).onclick = async () => { await navigator.clipboard.writeText($('#ocr-text', el).value); toast('اننسخ ✓'); };
+    const tr = $('#ocr-tr', el);
+    if (tr) tr.onclick = () => ocrDialog(key, at, true);
+  });
+}
+$('#p-ocr').onclick = () => {
+  if (!state.current) return toast('هذا تشغيل مباشر، حمّله أول');
+  video.pause();
+  ocrDialog(state.current.key, video.currentTime, false);
+};
+
+
+/* ------------------------------------------------------------------ drag & drop (links here, files through the app) */
+(() => {
+  const zone = $('#dropzone');
+  let depth = 0;
+  const hasStuff = (e) => [...(e.dataTransfer?.types || [])].some((t) => ['Files', 'text/uri-list', 'text/plain', 'text/x-moz-url'].includes(t));
+  document.addEventListener('dragenter', (e) => { if (hasStuff(e)) { depth += 1; zone.hidden = false; } });
+  document.addEventListener('dragleave', () => { depth = Math.max(0, depth - 1); if (!depth) zone.hidden = true; });
+  document.addEventListener('dragover', (e) => { if (hasStuff(e)) e.preventDefault(); });
+  document.addEventListener('drop', async (e) => {
+    e.preventDefault();
+    depth = 0;
+    zone.hidden = true;
+    const text = e.dataTransfer.getData('text/uri-list') || e.dataTransfer.getData('text/plain') || '';
+    if (/https?:\/\//i.test(text)) {
+      const count = await api().add(text, state.mode, $('#quality').value);
+      if (count) { toast(count > 1 ? `بدأ تحميل ${count} روابط ⬇` : 'بدأ التحميل ⬇'); show('download'); refreshJobs(); }
+      else toast('ما لقيت رابط واضح');
+    }
+    // dropped files are picked up by the app itself (it knows their paths) and land in the library
+  });
+})();
+
+/* ------------------------------------------------------------------ start with Windows */
+async function initStartupBox() {
+  const box = $('#s-startup');
+  if (!box) return;
+  if (!(await api().startup_available())) { box.disabled = true; box.parentElement.title = 'يشتغل بعد التثبيت (مو بالنسخة التجريبية)'; return; }
+  box.checked = !!(await api().get_settings()).run_at_startup;
+  box.onchange = async () => { const ok = await api().set_startup(box.checked); if (!ok) { box.checked = false; toast('ما قدرت أفعّلها'); } };
 }

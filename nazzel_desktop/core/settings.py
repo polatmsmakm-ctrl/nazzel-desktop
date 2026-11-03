@@ -5,7 +5,7 @@ import sys
 import threading
 
 APP_NAME = 'Nazzel'
-VERSION = '1.2.0'
+VERSION = '1.3.0'
 
 
 def data_dir():
@@ -85,7 +85,7 @@ DEFAULTS = {
     'gemini_search': True,
     'stremio_addon': '',
     'stremio_quality': '1080p',
-    'sub_font': 'system', 'sub_color': 'white', 'sub_background': 'box', 'sub_scale': 1.0, 'sub_top': False,
+    'sub_font': 'system', 'sub_color': 'white', 'sub_background': 'box', 'sub_scale': 1.0, 'dual_subs': False, 'assistant_memory': True, 'close_to_tray': False, 'run_at_startup': False, 'sub_top': False,
 }
 
 
