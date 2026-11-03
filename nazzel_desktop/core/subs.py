@@ -101,16 +101,23 @@ def decode(data):
 
 
 def fetch(target, video, limit=12):
-    """Every Arabic subtitle for target next to video (name.ar.srt, name.ar-2.srt …). Returns how many."""
+    """Every Arabic subtitle (up to 12) and a few English ones for target next to video
+    (name.ar.srt, name.ar-2.srt …, name.en.srt …). Returns how many."""
     kind, vid = target
     data = _json(f"{SUBTITLES}/subtitles/{kind}/{urllib.parse.quote(vid, safe=':')}.json")
-    entries = [s for s in (data or {}).get('subtitles') or [] if (s.get('lang') or '').lower() in ('ara', 'ar', 'arabic')]
+    listed = (data or {}).get('subtitles') or []
+    total = _save([s for s in listed if (s.get('lang') or '').lower() in ('ara', 'ar', 'arabic')], 'ar', limit, video)
+    total += _save([s for s in listed if (s.get('lang') or '').lower() in ('eng', 'en', 'english')], 'en', 3, video)
+    return total
+
+
+def _save(entries, code, limit, video):
     stem = os.path.splitext(video)[0]
     existing = sum(1 for n in os.listdir(os.path.dirname(video))
-                   if n.startswith(os.path.basename(stem) + '.ar') and media.ext(n) == 'srt')
+                   if n.startswith(os.path.basename(stem) + '.' + code) and media.ext(n) == 'srt')
     seen, saved = set(), 0
     for entry in entries:
-        if saved >= limit or not entry.get('url'):
+        if saved + existing >= limit or not entry.get('url'):
             continue
         try:
             req = urllib.request.Request(entry['url'], headers={'User-Agent': 'Nazzel-Desktop/1.0'})
@@ -123,7 +130,7 @@ def fetch(target, video, limit=12):
             continue
         seen.add(hash(text))
         number = existing + saved + 1
-        lang = 'ar' if number == 1 else f'ar-{number}'
+        lang = code if number == 1 else f'{code}-{number}'
         with open(f'{stem}.{lang}.srt', 'w', encoding='utf-8') as fh:
             fh.write(text)
         saved += 1
